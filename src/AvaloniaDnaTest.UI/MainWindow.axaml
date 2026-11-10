@@ -1,0 +1,39 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="AvaloniaDnaTest.UI.MainWindow"
+        Title="Avalonia Test · Excel-DNA" Background="{DynamicResource WindowSurface}" Width="980" Height="840" MinWidth="740" MinHeight="600">
+  <DockPanel Margin="24">
+    <Border DockPanel.Dock="Bottom" CornerRadius="8" Padding="12" Margin="0,16,0,0" Background="#203B66">
+      <TextBlock Text="{Binding Status}" Foreground="White" TextWrapping="Wrap"/>
+    </Border>
+    <ScrollViewer>
+      <StackPanel Spacing="18">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel><TextBlock Classes="heading" Text="Avalonia i Excel"/><TextBlock Text=".NET 8 · Avalonia 12.1.5 · Excel-DNA 1.9" Opacity="0.65"/></StackPanel>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" Margin="0,0,8,0">
+            <TextBlock Text="Mörkt tema" VerticalAlignment="Center"/>
+            <ToggleSwitch MinWidth="44" Width="44" OnContent="" OffContent="" IsChecked="{Binding DarkTheme}"/>
+          </StackPanel>
+        </Grid>
+        <Border Padding="18" CornerRadius="12" BorderThickness="1" BorderBrush="#5477A5">
+          <StackPanel Spacing="12">
+            <TextBlock Text="Kontrollpanel" FontSize="18" FontWeight="SemiBold"/>
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="24" RowSpacing="12">
+              <TextBox x:Name="InputBox" PlaceholderText="Skriv ett meddelande" Text="{Binding Input}"/>
+              <ComboBox Grid.Column="1" ItemsSource="{Binding Options}" SelectedItem="{Binding SelectedOption}" HorizontalAlignment="Stretch"/>
+              <CheckBox Grid.Row="1" Content="Aktivera testläge" IsChecked="{Binding TestMode}"/>
+              <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="16"><RadioButton GroupName="mode" Content="Standard" IsChecked="{Binding StandardMode}"/><RadioButton GroupName="mode" Content="Utökad"/></StackPanel>
+              <DatePicker Grid.Row="2" SelectedDate="{Binding SelectedDate}"/>
+              <StackPanel Grid.Row="2" Grid.Column="1"><Slider x:Name="ProgressSlider" Minimum="0" Maximum="100" Value="{Binding Progress}"/><ProgressBar x:Name="TestProgressBar" Minimum="0" Maximum="100" Value="{Binding Progress}" ShowProgressText="True"/></StackPanel>
+              <StackPanel Grid.Row="3" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="10"><Button Content="Visa inmatning" Command="{Binding ApplyCommand}"/><Button Content="Öka med 10" Command="{Binding AdvanceCommand}"/><Button Content="Återställ" Command="{Binding ResetCommand}"/></StackPanel>
+            </Grid>
+          </StackPanel>
+        </Border>
+        <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Excel-information" FontSize="18"/><Button Grid.Column="1" Content="Uppdatera från Excel" Command="{Binding RefreshCommand}"/></Grid>
+        <TextBlock Text="{Binding ExcelInformation}" TextWrapping="Wrap"/>
+        <DataGrid x:Name="TestGrid" Height="265" ItemsSource="{Binding Rows}" AutoGenerateColumns="False" IsReadOnly="True" GridLinesVisibility="Horizontal" CanUserSortColumns="True">
+          <DataGrid.Columns><DataGridTextColumn Header="Nr" Binding="{Binding Id}" Width="70"/><DataGridTextColumn Header="Produkt" Binding="{Binding Name}" Width="*"/><DataGridTextColumn Header="Antal" Binding="{Binding Quantity}" Width="120"/><DataGridTextColumn Header="Belopp" Binding="{Binding Amount}" Width="140"/></DataGrid.Columns>
+        </DataGrid>
+        <Button Content="Om detta test" Command="{Binding AboutCommand}" HorizontalAlignment="Left"/>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</Window>

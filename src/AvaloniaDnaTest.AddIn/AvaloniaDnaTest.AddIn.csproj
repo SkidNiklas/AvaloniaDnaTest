@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <ExcelDnaCreate32BitAddIn>false</ExcelDnaCreate32BitAddIn>
+    <ExcelDnaCreate64BitAddIn>true</ExcelDnaCreate64BitAddIn>
+    <ExcelDnaPackNativeLibraryDependencies>true</ExcelDnaPackNativeLibraryDependencies>
+    <ExcelDnaPackManagedDependencies>true</ExcelDnaPackManagedDependencies>
+    <ExcelAddInExplicitExports>true</ExcelAddInExplicitExports>
+    <ExcelAddInDisableAssemblyContextUnload>true</ExcelAddInDisableAssemblyContextUnload>
+    <RunExcelDnaSetDebuggerOptions>false</RunExcelDnaSetDebuggerOptions>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ExcelDna.AddIn" Version="1.9.0" />
+    <ProjectReference Include="../AvaloniaDnaTest.UI/AvaloniaDnaTest.UI.csproj" />
+  </ItemGroup>
+</Project>

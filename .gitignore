@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+.cli/
+.vs/
+artifacts/
+.packages/
+.nuget-http/
+NuGet.Local.Config
+artifacts-restore.log
+artifacts-build.log

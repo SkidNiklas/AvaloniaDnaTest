@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Win32" Version="12.1.5" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.5" />
+    <PackageReference Include="Avalonia.HarfBuzz" Version="12.1.5" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.5" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
+  </ItemGroup>
+</Project>
