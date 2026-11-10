@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using System.Text;
+using System.Collections.Concurrent;
 
 namespace AvaloniaDnaTest.UI;
 
@@ -10,6 +11,59 @@ namespace AvaloniaDnaTest.UI;
 public static class DiagnosticLog
 {
     private static readonly object Gate = new();
+    private static readonly object TraceDrainGate = new();
+    private static readonly ConcurrentQueue<string> TraceLines = new();
+    private static int _traceScheduled;
+    private static nint _excelWindow;
+    private static long _windowShown;
+    public static nint ExcelWindow { get => Interlocked.CompareExchange(ref _excelWindow, 0, 0); set => Interlocked.Exchange(ref _excelWindow, value); }
+    public static long WindowShownTimestamp => Interlocked.Read(ref _windowShown);
+    public static void WindowShown() { Interlocked.Exchange(ref _windowShown, Stopwatch.GetTimestamp()); Trace("Avalonia.WindowShown"); }
+    public static string MillisecondsSince(long timestamp) => timestamp == 0 ? "n/a" : Stopwatch.GetElapsedTime(timestamp).TotalMilliseconds.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
+
+    // Capture on the calling thread; only disk I/O is moved to a single queued drain.
+    // No COM access, UI dispatch, synchronous disk write or focus change in this path.
+    public static void Trace(string context)
+    {
+        try
+        {
+            var now = DateTimeOffset.Now;
+            long tick = Stopwatch.GetTimestamp();
+            nint foreground = GetForegroundWindow();
+            nint excel = ExcelWindow;
+            string focus = excel == 0 ? "unknown" : (foreground == excel).ToString();
+            TraceLines.Enqueue($"{now:O} PID={Environment.ProcessId} thread={Environment.CurrentManagedThreadId} apartment={Thread.CurrentThread.GetApartmentState()} tick={tick} foreground=0x{foreground:X} excel=0x{excel:X} excelForeground={focus} {context}{Environment.NewLine}");
+            if (Interlocked.Exchange(ref _traceScheduled, 1) == 0)
+                ThreadPool.QueueUserWorkItem(_ =>
+                {
+                    do
+                    {
+                        FlushTrace();
+                        Interlocked.Exchange(ref _traceScheduled, 0);
+                    } while (!TraceLines.IsEmpty && Interlocked.Exchange(ref _traceScheduled, 1) == 0);
+                });
+        }
+        catch { /* Diagnostic capture must never break an Office callback. */ }
+    }
+    public static void FlushTrace()
+    {
+        try
+        {
+            lock (TraceDrainGate)
+            {
+                var batch = new StringBuilder();
+                while (TraceLines.TryDequeue(out var line)) batch.Append(line);
+                if (batch.Length == 0) return;
+                lock (Gate)
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+                    File.AppendAllText(LogPath, batch.ToString());
+                }
+            }
+        }
+        catch { }
+    }
+    [DllImport("user32.dll")] private static extern nint GetForegroundWindow();
     public static string LogPath => Path.Combine(Path.GetTempPath(), "AvaloniaDnaTest", "diagnostics.log");
     public static string? XllPath { get; set; }
     public static void Write(string message)

@@ -16,9 +16,23 @@ internal static class Program
             if (args.Contains("--smoke"))
             {
                 // Same bootstrap and dispatcher as Excel, not a desktop-lifetime substitute.
+                int closedCount = 0;
+                ui.WindowClosed += (_, _) => closedCount++;
                 for (int i = 0; i < 3; i++)
                 {
-                    await ui.ShowAsync(0, refresh: true);
+                    await ui.ShowAsync(0, refresh: true, beforeActivation: () =>
+                    {
+                        if (!ui.IsWindowOpen) throw new Exception("Activation handoff must follow visible window.");
+                        return Task.CompletedTask;
+                    });
+                    MainWindow? original = null;
+                    await ui.InspectWindowAsync(window => original = window);
+                    await ui.ShowAsync(0);
+                    await ui.InspectWindowAsync(window =>
+                    {
+                        if (!ReferenceEquals(original, window) || !ui.IsWindowOpen)
+                            throw new Exception("Activation must reuse the visible window.");
+                    });
                     await Task.Delay(800);
                     await ui.InspectWindowAsync(window =>
                     {
@@ -45,8 +59,15 @@ internal static class Program
                         }
                     });
                     await ui.CloseWindowAsync();
+                    if (ui.IsWindowOpen || closedCount != i + 1)
+                        throw new Exception("Window close state/event failed.");
                 }
-                Console.WriteLine("PASS: initialize once; show/close/reopen 3x; TextBox round-trip; Slider/ProgressBar; 10 DataGrid rows; light/dark; async service.");
+                // Closing during the asynchronous handoff must not activate a stale window.
+                await ui.ShowAsync(0, beforeActivation: () => ui.CloseWindowAsync());
+                if (ui.IsWindowOpen || closedCount != 4) throw new Exception("Close during activation handoff failed.");
+                await ui.ShowAsync(0);
+                await ui.CloseWindowAsync();
+                Console.WriteLine("PASS: initialize once; show/close/reopen 3x; same-window activation; close during activation handoff and reopen; TextBox round-trip; Slider/ProgressBar; 10 DataGrid rows; light/dark; async service.");
                 return 0;
             }
             var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

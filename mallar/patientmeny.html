@@ -1,0 +1,261 @@
+<!--
+    Mall för patientmenyn (modHtmlGenerator.bas).
+
+    Sektioner (en inre sektion blir en platshållare med samma namn i den yttre):
+      huvud        - dokumentets början, CSS och <body>: {titel}
+      sida         - en utskriftssida (A4 liggande), skrivs en gång per sida:
+                     {rubrik} ("Patientmeny") {vecka} (veckonummer) {datum} ("5 – 11 oktober 2026")
+                     {matsedelsvecka} {tabell} {dagensalt}
+        tabell     - menytabellen: {kolumnrubrik} {rad}
+          kolumnrubrik - en kolumnrubrik per kosttyp: {jamnklass} ("jamn" på varannan kolumn)
+                         {kost} (kosttypen, för egen rubrikfärg via th[data-kost="..."]) {kolumn}
+          rad      - en rad per dag och måltid: {radklass} (tom för lunch, "middag-row" för middag)
+                     {dagcell} {maltidcell} {cell}
+            dagcell    - veckodagen, bara på dagens första rad på sidan: {dagklass} ("dag-a"/"dag-b") {dagrader}
+                         {dag} (veckodagens namn) {dagdatum} ("5/10")
+            maltidcell - Lunch/Middag: {maltid}
+            cell       - en cell per kosttyp: {jamnklass} ("jamn" på varannan kolumn) {innehall}
+        dagensalt  - dagens alternativ (utelämnas om det saknas): {period} ("Mån–tor") {altrad}
+          altrad   - {nr} {innehall}
+      fot          - dokumentets slut
+
+    Alla färger och mått ligger som variabler i :root överst i CSS:en.
+    Radhöjden styrs av --cell-h (.cell-inner och .rotate-wrap). Med 7 mm sidmarginal och
+    sidhuvud + dagens alternativ får två sidor plats med 19,5 mm - högre ger fler än 2 sidor.
+    Färgerna för grönsak (--veg) och dessert (--dessert) används även i FrmVäljKomponent -
+    ändra COLOR_GRONSAK / COLOR_DESSERT i modHtmlGenerator.bas samtidigt.
+    Vid laddning tonas receptkoder (t.ex. AKL273) ner (markArticleCodes) och texten i varje
+    .cell-inner krymps (fitCellText, 6 pt ner till 4 pt) tills den får plats. Därefter startas
+    utskriften, men bara om <body> har attributet data-autoprint (läggs till av
+    modHtmlGenerator.bas), så att förhandsvisningen av mallen inte skriver ut.
+    En tom cell visas som ett grått streck (.cell-inner:empty).
+    Allt inom exempel-markörerna är bara för förhandsvisning och tas bort av koden.
+    Format för markörerna: se ModMall.bas.
+-->
+<!-- mall:huvud -->
+<!DOCTYPE html>
+<html lang="sv"><head><meta charset="utf-8">
+<title>{titel}</title>
+<style>
+:root {
+    --ink:          #1d2433;   /* brödtext */
+    --ink-muted:    #5d6675;   /* receptkoder, sekundär text */
+    --ink-faint:    #a3aab5;   /* tom cell-markör */
+    --navy:         #22324f;   /* rubrikrad, dagkolumn */
+    --navy-2:       #3a4d70;   /* varannan dag */
+    --on-navy:      #ffffff;
+    --rule:         #c3c9d3;   /* tunna linjer */
+    --rule-strong:  #22324f;   /* linje mellan dagar */
+    --zebra:        #f3f5f8;   /* varannan kostkolumn */
+    --dinner:       #f7f1e4;   /* middagsrad */
+    --dinner-zebra: #eee6d4;   /* middagsrad × varannan kolumn */
+    --veg:          #17763a;   /* grönsak (COLOR_GRONSAK) */
+    --dessert:      #a3266d;   /* dessert (COLOR_DESSERT) */
+    --main:         #1f4fa0;   /* huvudkomponent */
+    --th-veg:       #1e6b3f;   /* rubrik Lakto-ovo-veg */
+    --th-timbal:    #8a4f12;   /* rubrik Timbal */
+    --cell-h:       21.5mm;
+    --fs-cell:      6pt;
+}
+
+@page { size: A4 landscape; margin: 7mm; }
+
+/* Utan detta skriver de flesta webbläsare ut UTAN bakgrundsfärger
+   (om inte "Bakgrundsgrafik" är ikryssat i utskriftsdialogen). */
+* { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+body {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Sidhuvud ---------- */
+.sheet-head {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 6mm; margin: 0 0 2.5mm 0; padding-bottom: 1.8mm;
+    border-bottom: 0.6mm solid var(--navy);
+}
+.sheet-head h1 {
+    margin: 0; font-size: 15pt; font-weight: 700; letter-spacing: -0.01em;
+    line-height: 1; display: flex; align-items: baseline; gap: 3mm;
+}
+.sheet-head .week {
+    font-size: 9pt; font-weight: 700; color: var(--on-navy); background: var(--navy);
+    padding: 0.6mm 2mm; border-radius: 1mm; position: relative; top: -0.6mm;
+}
+.sheet-head .week.cycle { background: var(--navy-2); }
+.sheet-head h1 > span { white-space: nowrap; }
+.sheet-head .dates { font-size: 9pt; font-weight: 400; color: var(--ink-muted); }
+.sheet-head .meta { display: flex; align-items: flex-end; gap: 6mm; }
+.legend { display: flex; gap: 3.5mm; font-size: 6.5pt; color: var(--ink-muted); }
+.legend span { white-space: nowrap; }
+.legend .komp-gronsak, .legend .komp-dessert, .legend .komp-frys, .legend .kod { font-size: 6.5pt; }
+
+/* ---------- Veckotabellen ---------- */
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th, td {
+    border: 0.25mm solid var(--rule);
+    padding: 0.9mm 1mm; vertical-align: top; overflow: hidden; box-sizing: border-box;
+}
+th {
+    font-size: 6.2pt; font-weight: 700; line-height: 1.1;
+    background: var(--navy); color: var(--on-navy);
+    border-color: var(--navy); border-left-color: #4a5c7d;
+    text-align: center; vertical-align: middle; height: 7mm;
+    hyphens: auto; overflow-wrap: anywhere;
+}
+td { font-size: var(--fs-cell); }
+
+.date-col { width: 9mm; text-align: center; vertical-align: middle; padding: 0; }
+.meal-col { width: 5mm; text-align: center; vertical-align: middle; padding: 0; }
+/* Tomma rubrikrutor ovanför dag/måltid: ingen färg eller ram. */
+th.date-col, th.meal-col { background: transparent; border: none; }
+/* Rubrikrandning som dagkolumnen. Egen färg per kosttyp skrivs efter, så att den vinner. */
+th.jamn { background: var(--navy-2); }
+th[data-kost="Lakto-ovo-veg"] { background: var(--th-veg); }
+th[data-kost="Timbal"]        { background: var(--th-timbal); }
+
+.rotate { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; font-weight: 700; font-size: 6pt; display: inline-block; }
+.rotate small { display: block; font-weight: 400; opacity: 0.85; font-size: 6.5pt; letter-spacing: 0.02em; }
+.rotate-wrap { height: var(--cell-h); overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.cell-inner { height: var(--cell-h); overflow: hidden; line-height: 1.22; overflow-wrap: break-word; hyphens: auto; }
+tr { break-inside: avoid; }
+
+/* Dagkolumn: mörk, varannan dag lite ljusare */
+td.date-col { color: var(--on-navy); border-color: var(--navy); }
+td.dag-a { background: var(--navy); }
+td.dag-b { background: var(--navy-2); }
+.date-col .rotate { font-size: 9.5pt; letter-spacing: 0.02em; }
+
+/* Måltidskolumn */
+td.meal-col { background: #ffffff; color: var(--ink-muted); }
+td.meal-col .rotate { font-size: 5.5pt; text-transform: uppercase; letter-spacing: 0.12em; }
+tr.middag-row td.meal-col { background: var(--dinner-zebra); color: var(--ink); }
+
+/* Kolumnrandning + middagston */
+td.jamn { background: var(--zebra); }
+tr.middag-row { background: var(--dinner); }
+tr.middag-row td.jamn { background: var(--dinner-zebra); }
+
+/* Tjock linje mellan dagar (dagens första rad är den som har veckodagscellen) */
+tr:has(> td.date-col) > td { border-top: 0.5mm solid var(--rule-strong); }
+
+/* Tom cell = tydligt markerad, inte bara "glömd" */
+.cell-inner:empty::before { content: "–"; color: var(--ink-faint); display: block; text-align: center; padding-top: 7mm; font-size: 8pt; }
+
+/* ---------- Komponentfärger ---------- */
+.komp-gronsak { color: var(--veg); font-weight: 600; }
+.komp-dessert { color: var(--dessert); font-style: italic; }   /* kursiv = syns även på svartvit skrivare */
+.komp-huvud   { color: var(--main); font-weight: 600; }
+/* Bakgrunden som gradient med genomskinlig kant upptill, så att färgen inte når över den synliga texten
+   (en inline-bakgrund täcker annars hela fonthöjden). Justera 14% vid behov. */
+.komp-frys {
+    color: #ffffff; font-weight: 700; font-style: normal; padding: 0 0.6mm; border-radius: 0.5mm;
+    background: linear-gradient(to bottom, transparent 0 14%, var(--dessert) 14% 100%);
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+}
+.komp-frys::before { content: "❄\00a0"; font-weight: 400; }
+
+/* Receptkoder (AKL273, EF0117 …) nedtonade så att maträtten läses först */
+.kod { color: var(--ink-muted); font-size: 0.88em; font-weight: 400; font-style: normal; letter-spacing: 0.01em; }
+.komp-gronsak .kod, .komp-dessert .kod, .komp-huvud .kod { color: inherit; opacity: 0.75; }
+.komp-frys .kod { color: inherit; opacity: 0.9; }
+
+/* ---------- Dagens alternativ ---------- */
+.alt-block { display: flex; align-items: stretch; margin-top: 2.5mm; border: 0.25mm solid var(--rule); }
+.alt-block h2 {
+    flex: 0 0 auto; margin: 0; font-size: 6.5pt; line-height: 1.2; font-weight: 700;
+    background: var(--navy); color: var(--on-navy); padding: 1.2mm 2.5mm;
+    display: flex; flex-direction: column; justify-content: center; text-transform: uppercase; letter-spacing: 0.06em;
+}
+.alt-block h2 small { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 7pt; opacity: 0.85; }
+.alt-block ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); flex: 1; }
+.alt-block li { font-size: 7pt; line-height: 1.25; padding: 1.2mm 2.5mm; border-left: 0.25mm solid var(--rule); display: flex; gap: 2mm; align-items: baseline; }
+.alt-block li b { flex: 0 0 auto; font-size: 6pt; color: var(--navy); background: var(--zebra); border: 0.25mm solid var(--rule); border-radius: 0.6mm; padding: 0.2mm 1mm; }
+
+.page { break-after: page; page-break-after: always; }
+.page:last-child { break-after: auto; page-break-after: auto; }
+
+/* Förhandsvisning på skärm: varje sida som ett vitt ark (påverkar inte utskriften). */
+@media screen {
+    body { background: #d4d7dc; padding: 8mm 0; }
+    .page { width: 283mm; min-height: 196mm; background: #fff; margin: 0 auto 8mm; padding: 7mm; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+}
+</style>
+<script>
+/* Tonar ner receptkoder: 1–8 versaler följt av 2–6 siffror läggs i <span class="kod">. */
+function markArticleCodes() {
+    var re = /\b([A-ZÅÄÖ]{1,8}\d{2,6})\b/g;
+    document.querySelectorAll('.cell-inner, .alt-block li > span').forEach(function (el) {
+        if (el.querySelector('.kod')) return;            // redan uppmärkt
+        var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), nodes = [], n;
+        while ((n = walker.nextNode())) nodes.push(n);
+        nodes.forEach(function (t) {
+            re.lastIndex = 0;
+            if (!re.test(t.nodeValue)) return;
+            re.lastIndex = 0;
+            var span = document.createElement('span');
+            span.innerHTML = t.nodeValue.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                                        .replace(re, '<span class="kod">$1</span>');
+            t.replaceWith.apply(t, Array.from(span.childNodes));
+        });
+    });
+}
+/* Krymper texten i varje cell tills den får plats (max 6 pt, min 4 pt). */
+function fitCellText() {
+    var maxSize = 6, minSize = 4, step = 0.25;
+    document.querySelectorAll('.cell-inner').forEach(function (el) {
+        var size = maxSize;
+        el.style.fontSize = size + 'pt';
+        while ((el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) && size > minSize) {
+            size -= step;
+            el.style.fontSize = size + 'pt';
+        }
+    });
+}
+window.addEventListener('load', function () {
+    markArticleCodes();
+    fitCellText();
+    if (document.body.hasAttribute('data-autoprint')) window.print();
+});
+</script>
+</head><body>
+<!-- /mall:huvud -->
+<!-- mall:sida -->
+<div class="page">
+<header class="sheet-head">
+  <h1>{rubrik} <span class="week">Vecka {vecka}</span> <span class="week cycle">Matsedelsvecka {matsedelsvecka}</span> <span class="dates">{datum}</span></h1>
+  <div class="meta">
+    <div class="legend">
+      <span><span class="komp-gronsak">Grönsak</span></span>
+      <span><span class="komp-dessert">Dessert</span></span>
+      <span><span class="komp-frys">Fryst</span></span>
+      <span><span class="kod">AKL273</span> = receptkod</span>
+    </div>
+  </div>
+</header>
+<!-- mall:tabell -->
+<table>
+<tr><th class="date-col"></th><th class="meal-col"></th><!-- mall:kolumnrubrik --><th class="{jamnklass}" data-kost="{kost}">{kolumn}</th><!-- /mall:kolumnrubrik --><!-- exempel --><th data-kost="A-kost">A&#8209;kost</th><th class="jamn" data-kost="Dialyskost">Dialyskost</th><th data-kost="Stomi">Stomi</th><th class="jamn" data-kost="Grov paté">Grov paté</th><th data-kost="Bakterielåg">Bakterielåg</th><th class="jamn" data-kost="Baskost">Baskost</th><th data-kost="Glutenfri">Glutenfri</th><th class="jamn" data-kost="Laktosfri">Laktosfri</th><th data-kost="Mjölkproteinfri">Mjölkproteinfri</th><th class="jamn" data-kost="Lakto-ovo-veg">Lakto&#8209;ovo&#8209;veg</th><th data-kost="-Fisk/fläsk/kyckling">&#8209;Fisk/fläsk/kyckling</th><th class="jamn" data-kost="Timbal">Timbal</th><th data-kost="Flytande">Flytande</th><!-- /exempel --></tr>
+<!-- mall:rad -->
+<tr class="{radklass}"><!-- mall:dagcell --><td class="date-col {dagklass}" rowspan="{dagrader}"><div class="rotate-wrap"><span class="rotate">{dag} <small>{dagdatum}</small></span></div></td><!-- /mall:dagcell --><!-- mall:maltidcell --><td class="meal-col jamn"><div class="rotate-wrap"><span class="rotate">{maltid}</span></div></td><!-- /mall:maltidcell --><!-- mall:cell --><td class="{jamnklass}"><div class="cell-inner">{innehall}</div></td><!-- /mall:cell --><!-- exempel --><td class="jamn"><div class="cell-inner"><span class="komp-huvud">Pannbiff AKL123</span>, löksky, <span class="komp-gronsak">broccoli</span></div></td><td><div class="cell-inner">Pannbiff AKL123, löksky, <span class="komp-gronsak">broccoli</span></div></td><td class="jamn"><div class="cell-inner">Pannbiff BK123, sås</div></td><td><div class="cell-inner">Grov paté av pannbiff GPL123</div></td><td class="jamn"><div class="cell-inner">Pannbiff AKL123, <span class="komp-gronsak">kokta morötter</span></div></td><td><div class="cell-inner"></div></td><td class="jamn"><div class="cell-inner">Pannbiff GF123, <span class="komp-gronsak">broccoli</span></div></td><td><div class="cell-inner">Pannbiff LF123, <span class="komp-gronsak">broccoli</span></div></td><td class="jamn"><div class="cell-inner">Pannbiff MF123, <span class="komp-gronsak">broccoli</span></div></td><td><div class="cell-inner">Bönbiff LOL123, <span class="komp-gronsak">broccoli</span></div></td><td class="jamn"><div class="cell-inner">Vegobiff LOL124, <span class="komp-gronsak">broccoli</span></div></td><td><div class="cell-inner">Pannbiff TIMGMF06, potatismos på pulver, <span class="komp-gronsak">broccolitimbal</span></div></td><td class="jamn"><div class="cell-inner">Köttsoppa FLV029</div></td><!-- /exempel --></tr>
+<!-- /mall:rad -->
+<!-- exempel -->
+<tr class="middag-row"><td class="date-col dag-a"></td><td class="meal-col jamn"><div class="rotate-wrap"><span class="rotate">Middag</span></div></td><td><div class="cell-inner">Fiskgratäng AKL114, <span class="komp-gronsak">ärtor</span>, <span class="komp-dessert komp-frys">äppelkaka EF4050</span></div></td><td class="jamn"><div class="cell-inner">Fiskgratäng AKL114, <span class="komp-gronsak">ärtor</span>, <span class="komp-dessert">nyponsoppa</span></div></td><td><div class="cell-inner">Fiskgratäng AKL114</div></td><td class="jamn"><div class="cell-inner">Fiskgratäng AKL114</div></td><td><div class="cell-inner">Grov paté av fisk GPL114</div></td><td class="jamn"><div class="cell-inner">Fiskgratäng AKL114</div></td><td><div class="cell-inner">Fiskgratäng BK114</div></td><td class="jamn"><div class="cell-inner">Fiskgratäng GF114</div></td><td><div class="cell-inner">Fiskgratäng LF114</div></td><td class="jamn"><div class="cell-inner">Fiskgratäng MF114</div></td><td><div class="cell-inner">Grönsaksgratäng LOL114</div></td><td class="jamn"><div class="cell-inner"></div></td><td><div class="cell-inner">Fiskgryta TIMGMF11, <span class="komp-gronsak">morotstimbal</span></div></td><td class="jamn"><div class="cell-inner">Laxsoppa FLV012, <span class="komp-dessert">blåbärssoppa</span></div></td></tr>
+<tr><td class="date-col dag-b" rowspan="2"><div class="rotate-wrap"><span class="rotate">Tisdag <small>6/10</small></span></div></td><td class="meal-col jamn"><div class="rotate-wrap"><span class="rotate">Lunch</span></div></td><td><div class="cell-inner">Chili con carne AKL0074, ris AK0025, <span class="komp-gronsak">morot</span>, <span class="komp-dessert">blåbärsmuffin EF997</span></div></td><td class="jamn"><div class="cell-inner">Chili con carne AKL0074, ris AK0025, <span class="komp-gronsak">skivad morot</span></div></td><td><div class="cell-inner">Chili con carne AKL0074, ris AK0025</div></td><td class="jamn"><div class="cell-inner">Köttfärssås BK027, ris AK0025, <span class="komp-gronsak">morot</span></div></td><td><div class="cell-inner">Chili con carne GPL0074, potatis</div></td><td class="jamn"><div class="cell-inner">Chili con carne AKL0074, ris AK0025</div></td><td><div class="cell-inner">Köttfärssås BK027</div></td><td class="jamn"><div class="cell-inner">Köttfärssås BK027, ris AK0025</div></td><td><div class="cell-inner">Chili con carne AKL0074, ris AK0025</div></td><td class="jamn"><div class="cell-inner">Chili con carne AKL0074, ris AK0025</div></td><td><div class="cell-inner">Broccolipaj med ädelost L0128, aioli SKÄL270</div></td><td class="jamn"><div class="cell-inner"></div></td><td><div class="cell-inner">Oxstek TIMGMF15, tomatsås TIML003, <span class="komp-gronsak">blomkålstimbal</span></div></td><td class="jamn"><div class="cell-inner">Oxsoppa med tomat FLV456, <span class="komp-dessert">nyponsoppa</span></div></td></tr>
+<!-- /exempel -->
+</table>
+<!-- /mall:tabell -->
+<!-- mall:dagensalt -->
+<section class="alt-block"><h2>Dagens alternativ<small>{period}</small></h2><ol>
+<!-- mall:altrad --><li><b>{nr}</b><span>{innehall}</span></li><!-- /mall:altrad -->
+<!-- exempel --><li><b>2</b><span>Pankopanerad torsk AKL8431, remouladsås (kall) AKL0118, potatis, <span class="komp-gronsak">grönsaker</span></span></li><li><b>3</b><span>Tunnpannkaka EF0060, pannkakssylt port, laktosfri grädde</span></li><!-- /exempel -->
+</ol></section>
+<!-- /mall:dagensalt -->
+</div>
+<!-- /mall:sida -->
+<!-- mall:fot -->
+</body></html>
+<!-- /mall:fot -->

@@ -1,0 +1,651 @@
+<!--
+    Mall för utskriften från "Skapa uppack & renserilista" när dokumentet inte är bearbetat
+    (ModReceptHtml.bas och ModUppackListor.bas). Recepten läses direkt från Matildas flikar och
+    ritas med samma upplägg som de formaterade receptflikarna (FormatRecept). Försättsblad,
+    uppackslistor och etiketter räknas fram i minnet med samma regler som pipelinen.
+    Allt som väljs i trädet hamnar i ett dokument; varje del (class="sida") börjar på ny sida.
+
+    Sektioner (en inre sektion blir en platshållare med samma namn i den yttre):
+      huvud          - dokumentets början och CSS: {titel}
+      recept         - ett recept (börjar på ny sida):
+                       {namn} {proddatum} ("Måndag 2026-05-18") {kod} (receptkod)
+                       {serveringsrader} (grupp- och alternativrader)
+                       {antal} (totalt antal portioner, t.ex. "225 st")
+                       {ravikt} {ravikt_enhet} (vikt före tillagning) {mangd} {mangd_enhet} (efter tillagning)
+                       {specialkost} {ingredienser} {anvisning}
+        stampel      - kopiemärket före receptkoden på en receptkopia (tomt på originalet): {mottagare} (Källan/Vistet Lunch/...)
+      grupp         - en grupp serveringsrader (samma datum, tillfälle och mottagare):
+                       {datum} ("Tisdag 2026-05-19 Lunch") {grupp} (Patienterna/Källan/Vistet/Garnis)
+                       {mangd} {enhet} (gruppens summerade mängd)
+      alternativ     - en alternativrad: {rand} ("rand" på varannan rad i gruppen)
+                       {vatska} ("vatska" om mängden är räknad från liter) {farg} (kosttypens färg)
+                       {alternativ} {viktport} {antal} {ravikt} {ravikt_enhet} {mangd} {mangd_enhet}
+      ingrediens     - en ingrediens: {rand} {namn} {kod} {mangd} {mangd_enhet} {vikt} {vikt_enhet}
+        kod          - hanteringskoden efter namnet (bara om artikeln har en): {farg} {kodnamn}
+      anvisning      - en rad i tillagningsanvisningen: {text}
+      anvisningstom  - en tom rad i tillagningsanvisningen (litet mellanrum)
+      allergen       - "Innehåller:" och "Spår av:" i specialkosten: {text}
+
+      fsb            - försättsblad (en dag, en avdelning): {rubrik} (Produktionsköket/Dietköket/Renseriet)
+                       {dag} ("Produktionsdag: Måndag 2026-05-18")
+        fsbrecepttabell - receptlistan: {recept} (tas bara med om dagen har recept)
+        fsbuppgifter - listan "Uppgifter": {rader} (tas bara med om det finns listrader)
+      fsbrecept      - ett recept på försättsbladet: {namn} {bestallare} {fore} (rå vikt) {efter} (tillagad vikt)
+      fsbrad         - en rad på renseri-/kökslistan: {artikel} {tilltext} ("Renseriet Tis 12:00")
+                       {tillfarg} {beskrivning} {vikt} {recept}
+      fsbdi          - en rad på dietlistan: {artikel} {tilltext} ("Upptining till Ons") {tillfarg} {vikt} {recept}
+      valista        - vaktmästeriets uppackslista: {dag} ("Uppacksdag: Måndag 2026-05-18") {grupper}
+      vagrupp        - en lista per hanteringskod: {kodklass} ("kod-AF", "kod-AK" ... för färgen)
+                       {hantering} ("Avemb. i kyl") {hanteringfarg} {rader}
+      varad          - en rad på uppackslistan: {artikel} {proddag} {atdag} {vikt}
+                       ({recept} finns också, men recepten står bara på etiketterna)
+      vafrysin       - "Det kommer hem ... Frys in ... kg." under en kylvara (FrmEditKylvaror): {text}
+      etiketter      - ett etikettark, 2 x 4 etiketter med fast storlek: {etiketter}
+      etikett-va     - uppacksetikett (vaktmästeri): {datum} {artikel} {hantering} {hanteringfarg} {kodklass}
+                       {vikt} {totalt} ("av totalt 12,00 kg" om en del av en kylvara flyttats)
+                       {redigerad} ("(2,00 finns på uppack)" om en del av en kylvara flyttats)
+                       {recept} (en rad per recept) {bestallare} {alternativ} {proddag} {atdag}
+      etikett-di     - uppacksetikett (dieten): {datum} {artikel} {tilltext} {tillfarg} {vikt} {recept} {proddag} {atdag}
+      etikett-re     - uppgiftsetikett (renseriet): {datum} {artikel} {tilltext} {tillfarg} {beskrivning} {vikt} {recept}
+      kopiafsb       - försättsblad för receptkopiorna (en ätdag, en mottagare):
+                       {bestallare} ("Restaurang Källan Tisdag", "Hotell Vistet Tisdag Lunch" ...) {dag} ("Ätdag: Tisdag 2026-05-19") {recept}
+      kopiafsbrecept - ett recept på kopiornas försättsblad: {namn} {efter} {efter_enhet} (vikt efter tillagning)
+
+    Receptkopior (till Källan/Vistet, och Renseriets kopior per mottagargrupp) skrivs med sektionen
+    recept: bara mottagarens serveringsrader, omräknade mängder och stämpeln.
+      fot           - dokumentets slut. Skriptet krymper receptnamnet om det inte ryms på raden.
+
+    Utskriften startas automatiskt (onload="window.print()" läggs till av koden).
+    Allt inom exempel-markörerna är bara för förhandsvisning och tas bort av koden.
+    Format för markörerna: se ModMall.bas.
+-->
+<!-- mall:huvud -->
+<!DOCTYPE html>
+<html lang="sv"><head><meta charset="utf-8">
+<title>{titel}</title>
+<style>
+/* Recept, listor och etiketter: samma designsystem (färgvariabler) som Patientmeny och Svinnlista. */
+:root {
+    --ink:          #1d2433;
+    --ink-muted:    #5d6675;
+    --navy:         #22324f;
+    --navy-2:       #3a4d70;
+    --on-navy:      #ffffff;
+    --rule:         #c3c9d3;
+    --zebra:        #f3f5f8;
+    --head-tint:    #e3e8f0;   /* grupprader (serveringsdatum + mottagare) */
+    --dinner:       #f7f1e4;
+    --alert:        #b3261e;   /* specialkost, kopiestämpel */
+}
+
+@page { size: A4 portrait; margin: 10mm 10mm 5mm 10mm; }
+* { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
+body { margin: 0; font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: 10pt; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* Delarna har fasta bredder (som flikarna i Excel) som är smalare än sidans utskriftsyta:
+   centrera dem så att marginalen blir lika stor på båda sidor. */
+.sida { box-sizing: content-box; margin-left: auto; margin-right: auto; }
+.sida + .sida { break-before: page; }
+.recept { --bredd: 499.5pt; width: var(--bredd); }
+
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+tr { height: 14.25pt; break-inside: avoid; }
+td { padding: 0 2pt; white-space: nowrap; overflow: hidden; vertical-align: bottom; }
+td.h { text-align: right; }
+
+/* Färgkoder som kommer som inline-färg från datan (handlingskod, mottagare):
+   texten i koden färg, en ljus nyans av samma färg bakom. */
+.ingredienser .kod, .fsb-lista .till {
+    display: inline-block; padding: 0 3pt; margin-left: 2pt; border-radius: 1mm;
+    font-size: 0.8em; font-weight: 700; line-height: 1.35; vertical-align: 0.08em;
+    background: color-mix(in srgb, currentColor 12%, #fff);
+    border-left: 2pt solid currentColor;
+    filter: brightness(0.82) saturate(1.2);   /* ljusa datafärger (orange, gult) blir läsbara */
+}
+
+/* ==========================================================================
+   RECEPT
+   ========================================================================== */
+.namn { font-size: 22pt; font-weight: 700; letter-spacing: -0.01em; height: 31pt; line-height: 31pt; white-space: nowrap; overflow: hidden; }
+.proddag {
+    position: relative; display: flex; justify-content: space-between; align-items: center;
+    height: 19pt; margin-bottom: 7pt; padding-bottom: 3pt;
+    border-bottom: 0.6mm solid var(--navy);
+}
+.proddag .datum { font-size: 10.5pt; font-weight: 400; color: var(--ink-muted); }
+.proddag .kod {
+    font-size: 11pt; font-weight: 700; color: var(--on-navy); background: var(--navy);
+    padding: 0.25mm 2.2mm; border-radius: 1mm; letter-spacing: 0.02em;
+    border: 0.35mm solid var(--navy); line-height: 1.35;
+}
+
+/* Kopiemärke till vänster om receptkoden: [Vistet Kopia] [S0263].
+   Samma höjd och form som kodens märke, men i alert-rött med ljus botten. */
+.stampel {
+    display: inline-flex; align-items: center; margin-left: auto; margin-right: 2mm;
+    font-size: 11pt; font-weight: 700; line-height: 1.35; letter-spacing: 0.02em; white-space: nowrap;
+    color: var(--alert); background: #fbeceb;
+    border: 0.35mm solid var(--alert); border-radius: 1mm; padding: 0.25mm 2.2mm;
+}
+
+/* Receptkopia (receptet har en stämpel): samma upplägg men i en varm sepiaton
+   i stället för marinblått, så att en kopia syns redan på avstånd. */
+.recept:has(.stampel) {
+    --navy:      #5a4127;
+    --navy-2:    #7a5c3c;
+    --head-tint: #efe5d6;
+    --zebra:     #f8f3eb;
+    --rule:      #d3c6b4;
+}
+
+/* Serveringsdatum */
+.servering { border: 0.25mm solid var(--rule); }
+.servering td { font-size: 9.5pt; }
+.servering tr.rubrik td {
+    background: var(--navy); color: var(--on-navy); font-size: 8pt; font-weight: 700;
+    vertical-align: middle; border: none;
+}
+.servering tr.grupp { height: 15pt; }
+.servering tr.grupp td { background: var(--head-tint); font-size: 10pt; font-weight: 700; border-top: 0.25mm solid var(--rule); }
+.servering tr.grupp + tr td { border-top: 0.25mm solid var(--rule); }
+/* Randningen ligger på raden, inte på cellerna, så att dietfärgen kan mörkas utan att bakgrunden påverkas. */
+.servering tr.rand { background: var(--zebra); }
+.servering td.alternativ { font-weight: 700; padding-left: 4pt; filter: brightness(0.62) saturate(1.3); }
+.servering td.v { color: var(--ink); }
+.servering tr.vatska td.v { font-style: italic; color: var(--ink-muted); }
+.servering tr.summa { height: 16pt; }
+.servering tr.summa td { border-top: 0.5mm solid var(--navy); font-weight: 700; font-size: 10pt; background: #fff; }
+
+/* Specialkost – en varning, aldrig dekor */
+.specialkost { min-height: 9pt; padding: 0; color: var(--alert); font-size: 10.5pt; font-weight: 700; }
+.specialkost:not(:empty) { margin: 4pt 0; padding: 2pt 6pt; border-left: 2pt solid var(--alert); background: #fbeceb; }
+
+/* Ingredienser */
+.ingredienser td { font-size: 10pt; border-bottom: 0.25mm solid var(--rule); }
+.ingredienser tr.rubrik td { background: var(--navy); color: var(--on-navy); font-size: 8pt; font-weight: 700; vertical-align: middle; border: none; }
+.ingredienser tr.rand td { background: var(--zebra); }
+.ingredienser td.h { font-weight: 600; }
+.ingredienser td.h + td { color: var(--ink-muted); }
+.ingredienser tr.slut { height: 0.6mm; }
+.ingredienser tr.slut td { background: var(--navy); padding: 0; border: none; }
+
+.tillagning {
+    height: 17pt; line-height: 17pt; text-align: right; font-size: 10pt; font-weight: 700; white-space: pre;
+    color: var(--ink);
+}
+.anvisningsrubrik {
+    height: 14pt; margin-top: 4pt; font-size: 8pt; font-weight: 700; color: var(--navy);
+    text-transform: uppercase; letter-spacing: 0.08em; line-height: 14pt;
+}
+.anvisning { border: 0.25mm solid var(--rule); border-top: 0.6mm solid var(--navy); min-height: 15pt; padding: 3pt 6pt; }
+.anvisning .rad { min-height: 13pt; padding: 1pt 0; line-height: 1.3; }
+.anvisning .rad:first-child { font-weight: 700; color: var(--ink-muted); font-size: 8.5pt; letter-spacing: 0.04em; }
+.anvisning .tom { height: 4pt; }
+
+/* ==========================================================================
+   FÖRSÄTTSBLAD och UPPACKSLISTA – sidhuvud som SheetHead
+   ========================================================================== */
+.fsb, .valista, .kopiafsb { --bredd: 513.5pt; width: var(--bredd); }
+.fsb-rubrik, .kopiafsb-rubrik {
+    float: left; font-size: 20pt; font-weight: 700; letter-spacing: -0.01em;
+    height: 30pt; line-height: 30pt; text-align: left;
+}
+.fsb-dag, .kopiafsb-dag {
+    height: 30pt; line-height: 38pt; text-align: right; font-size: 10pt; color: var(--ink-muted);
+    border-bottom: 0.6mm solid var(--navy); margin-bottom: 8pt;
+}
+.kopiafsb-dag { margin-bottom: 10pt; font-size: 14pt; line-height: 36pt; }
+
+/* Tabellerna */
+.fsb-tabell td, .va-tabell td, .kopiafsb-tabell td {
+    white-space: normal; vertical-align: middle; padding: 3pt 5pt; border-bottom: 0.25mm solid var(--rule);
+}
+.fsb-tabell tr.fsb-huvud, .va-huvud { height: 16pt; }
+.fsb-huvud td, .va-huvud td {
+    background: var(--navy); color: var(--on-navy); font-size: 8pt; font-weight: 700;
+    text-align: center; vertical-align: middle; border-bottom: none;
+}
+.fsb-huvud td:first-child, .va-huvud td:first-child { text-align: left; }
+.fsb-huvud td:last-child { text-align: right; }
+.fsb-tabell tbody tr:nth-child(even) td { background: var(--zebra); }
+
+.fsb-underrubrik {
+    font-size: 8.5pt; font-weight: 700; color: var(--navy); text-transform: uppercase; letter-spacing: 0.08em;
+    margin: 14pt 0 3pt;
+}
+.fsb-recept { height: 24pt; }
+.fsb-recept td { font-size: 10.5pt; text-align: right; font-weight: 600; }
+.fsb-recept td:first-child { text-align: left; font-weight: 400; font-size: 11pt; }
+.fsb-recept .bestallare { display: block; font-size: 7.5pt; font-weight: 600; color: var(--ink-muted); margin-top: 0.5pt; }
+.fsb-lista { height: 20pt; }
+.fsb-lista td { font-size: 11pt; }
+.fsb-lista .beskrivning { display: block; font-size: 8.5pt; font-weight: 600; color: var(--ink-muted); }
+.fsb-lista .beskrivning:empty { display: none; }
+.fsb-lista td.vikt { font-weight: 700; text-align: center; font-size: 11pt; }
+.fsb-lista td.recept { font-size: 8.5pt; text-align: right; color: var(--ink-muted); line-height: 1.3; }
+.fsb-lista.di td { font-size: 10.5pt; }
+.fsb-lista.di td.vikt { font-weight: normal; }
+
+/* Försättsblad för receptkopior */
+.kopiafsb-tabell tr { height: 20pt; }
+.kopiafsb-tabell td { font-size: 11pt; }
+.kopiafsb-tabell tr:first-child td { border-top: 0.6mm solid var(--navy); }
+.kopiafsb-tabell tr:nth-child(even) td { background: var(--zebra); }
+.kopiafsb-tabell td.h { text-align: right; font-weight: 600; }
+
+/* Vaktmästeriets uppackslista – en grupp per hanteringskod */
+.va-grupp + .va-grupp { margin-top: 10pt; }
+.va-underrubrik {
+    display: flex; align-items: center; gap: 5pt;
+    font-size: 11pt; font-weight: 700; color: var(--ink);
+    padding: 3pt 6pt; margin-bottom: 0;
+    border-left: 2mm solid var(--kodtext);
+    background: var(--kodfarg, #eeeeee); background: color-mix(in srgb, var(--kodtext) 13%, #fff);
+    break-after: avoid;
+}
+.va-huvud { height: 14pt; }
+.va-huvud td { background: transparent; color: var(--ink-muted); font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 0.4mm solid var(--navy); }
+.va-huvud td:last-child { text-align: right; }
+.va-rad { height: 18pt; }
+.va-rad:nth-child(even of .va-rad) td,
+.va-rad:nth-child(even of .va-rad) + .va-frysin td { background: var(--zebra); }
+.va-rad:has(+ .va-frysin) td { border-bottom: none; }
+.va-rad td.artikel { font-size: 11pt; }
+.va-rad td.c { text-align: center; }
+.va-rad td.c:last-child { text-align: right; font-weight: 700; }
+.va-rad td.atdag { font-size: 8.5pt; text-align: center; color: var(--ink-muted); }
+.va-frysin td { font-size: 9.5pt; font-weight: 700; color: var(--alert); white-space: normal; }
+.va-frysin td::before { content: "❄\00a0"; font-weight: 400; }
+.kod-AF { --kodfarg: #f3e3f5; }
+.kod-AK { --kodfarg: #dae3f3; }
+.kod-AT { --kodfarg: #fbe5d6; }
+.kod-UP { --kodfarg: #e0f0ea; }
+.kod-KO { --kodfarg: #eadce3; }
+.kod-UB { --kodfarg: #fde7d6; }
+
+/* ==========================================================================
+   ETIKETTER – 2 × 4 per A4, fyll kolumnvis. Måtten är oförändrade.
+   Färgband överst i hanteringens färg, så att lådorna kan sorteras på avstånd.
+   ========================================================================== */
+@page etiketter { size: A4 portrait; margin: 5mm; }
+.etiketter { page: etiketter; --bredd: 200mm; width: var(--bredd); display: grid; grid-auto-flow: column;
+             grid-template-columns: 100mm 100mm; grid-template-rows: repeat(4, 71.5mm); }
+.etikett {
+    display: flex; flex-direction: column; gap: 1.4mm; padding: 5.5mm 5mm 4mm; overflow: hidden;
+    border-bottom: 0.3mm dashed #9aa1ad; overflow-wrap: anywhere; font-size: 10pt;
+    background: linear-gradient(var(--kodtext, var(--navy)), var(--kodtext, var(--navy))) left 5mm top 0 / calc(100% - 10mm) 1.6mm no-repeat;
+}
+.etikett:nth-child(-n+4) { border-right: 0.3mm dashed #9aa1ad; }
+.etikett:nth-child(4n) { border-bottom: none; }
+.etikett div:empty, .etikett span:empty { display: none; }
+.e-topp { display: flex; justify-content: space-between; align-items: center; gap: 2mm; font-size: 8.5pt; color: var(--ink-muted); }
+.e-kod {
+    padding: 0.5mm 2mm; border-radius: 1mm; font-weight: 700; font-size: 9.5pt; white-space: nowrap;
+    color: var(--kodtext, var(--ink)); color: color-mix(in srgb, var(--kodtext, #000) 72%, #000);
+    background: color-mix(in srgb, var(--kodtext, #000) 12%, #fff);
+    border-left: 2pt solid var(--kodtext, var(--ink));
+}
+.e-artikel { font-size: 15pt; font-weight: 700; line-height: 1.15; letter-spacing: -0.005em; }
+.e-beskrivning { font-size: 11pt; font-weight: 600; color: var(--ink-muted); }
+.e-vikt { font-size: 22pt; font-weight: 800; line-height: 1.05; letter-spacing: -0.01em; }
+.e-vikt .e-totalt { font-size: 9.5pt; font-weight: 400; color: var(--ink-muted); margin-left: 2mm; letter-spacing: 0; }
+.e-notis { font-size: 9pt; font-style: italic; color: var(--alert); }
+.e-till { flex: 1 1 auto; min-height: 0; overflow: hidden; border-top: 0.25mm solid var(--rule); padding-top: 1.5mm; font-size: 9pt; }
+.e-rubrik { font-size: 6.5pt; font-weight: 400; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-muted); }
+.e-till .e-recept { white-space: pre-line; column-gap: 4mm; line-height: 1.3; }
+.e-till .e-bestallare { font-weight: 700; color: var(--navy); margin-top: 1mm; }
+.e-till .e-alternativ { color: var(--ink-muted); font-style: italic; }
+.e-fot {
+    display: grid; grid-template-columns: auto 1fr; gap: 0 5mm; border-top: 0.25mm solid var(--rule);
+    padding-top: 1.5mm; font-size: 9.5pt; font-weight: 700;
+}
+
+/* Förhandsvisning på skärm (påverkar inte utskriften) */
+@media screen {
+    body { background: #d4d7dc; padding: 8mm 0; }
+    /* Varje blad visas som ett A4-ark (210 mm): sidopaddingen fyller ut till arkets bredd. */
+    .sida { background: #fff; margin: 0 auto 8mm; padding: 10mm calc((210mm - var(--bredd, 190mm)) / 2);
+            box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+    .etiketter { padding-top: 5mm; padding-bottom: 5mm; } /* @page etiketter har 5 mm marginal */
+}
+</style></head><body>
+<!-- /mall:huvud -->
+<!-- mall:recept -->
+<section class="sida recept">
+<div class="namn">{namn}</div>
+<div class="proddag"><span class="datum">Produktionsdatum: {proddatum}</span><!-- mall:stampel --><div class="stampel">{mottagare} Kopia</div><!-- /mall:stampel --><span class="kod">{kod}</span></div>
+<table class="servering">
+<colgroup><col style="width:15.75pt"><col style="width:160pt"><col style="width:58pt"><col style="width:54pt"><col style="width:54pt"><col style="width:61.5pt"><col style="width:17.25pt"><col style="width:61.5pt"><col style="width:17.25pt"></colgroup>
+<tr class="rubrik"><td colspan="3">Serveringsdatum</td><td class="h">Vikt/port</td><td class="h">Antal</td><td class="h">Rå vikt</td><td></td><td class="h">Mängd</td><td></td></tr>
+{serveringsrader}
+<tr class="summa"><td colspan="4"></td><td class="h">{antal}</td><td class="h">{ravikt}</td><td>{ravikt_enhet}</td><td class="h">{mangd}</td><td>{mangd_enhet}</td></tr>
+</table>
+<div class="specialkost">{specialkost}</div>
+<table class="ingredienser">
+<colgroup><col style="width:15.75pt"><col style="width:160pt"><col style="width:58pt"><col style="width:54pt"><col style="width:54pt"><col style="width:61.5pt"><col style="width:17.25pt"><col style="width:61.5pt"><col style="width:17.25pt"></colgroup>
+<tr class="rubrik"><td colspan="5">Namn</td><td class="h">Mängd</td><td></td><td class="h">Vikt</td><td></td></tr>
+{ingredienser}
+<tr class="slut"><td colspan="9"></td></tr>
+</table>
+<div class="tillagning">Rå vikt: {ravikt} {ravikt_enhet}  (Lättnad: {lattnad} %)  Färdig vikt: {mangd} {mangd_enhet}  </div>
+<div class="anvisningsrubrik">Tillagningsanvisning</div>
+<div class="anvisning">{anvisning}</div>
+</section>
+<!-- /mall:recept -->
+<!-- mall:grupp -->
+<tr class="ram grupp"><td colspan="2">{datum}</td><td colspan="5">{grupp}</td><td class="h">{mangd}</td><td>{enhet}</td></tr>
+<!-- /mall:grupp -->
+<!-- mall:alternativ -->
+<tr class="ram {rand} {vatska}"><td></td><td colspan="2" class="alternativ" style="color: {farg}">{alternativ}</td><td class="h">{viktport}</td><td class="h">{antal}</td><td class="h v">{ravikt}</td><td class="v">{ravikt_enhet}</td><td class="h v">{mangd}</td><td class="v">{mangd_enhet}</td></tr>
+<!-- /mall:alternativ -->
+<!-- mall:ingrediens -->
+<tr class="{rand}"><td colspan="5">{namn}<!-- mall:kod --> <span class="kod" style="color: {farg}">{kodnamn}</span><!-- /mall:kod --></td><td class="h">{mangd}</td><td>{mangd_enhet}</td><td class="h">{vikt}</td><td>{vikt_enhet}</td></tr>
+<!-- /mall:ingrediens -->
+<!-- mall:anvisning -->
+<div class="rad">{text}</div>
+<!-- /mall:anvisning -->
+<!-- mall:anvisningstom -->
+<div class="tom"></div>
+<!-- /mall:anvisningstom -->
+<template><!-- mall:allergen --><b>{text}</b><!-- /mall:allergen --></template>
+<!-- mall:fsb -->
+<section class="sida fsb">
+<div class="fsb-rubrik">{rubrik}</div>
+<div class="fsb-dag">{dag}</div>
+<!-- mall:fsbrecepttabell -->
+<table class="fsb-tabell">
+<colgroup><col style="width:342.5pt"><col style="width:85.5pt"><col style="width:85.5pt"></colgroup>
+<thead><tr class="fsb-huvud"><td>Recept</td><td>Rå vikt</td><td>Tillagad vikt</td></tr></thead>
+<tbody>
+{recept}
+</tbody>
+</table>
+<!-- /mall:fsbrecepttabell -->
+<!-- mall:fsbuppgifter -->
+<div class="fsb-underrubrik">Uppgifter</div>
+<table class="fsb-tabell">
+<colgroup><col style="width:257pt"><col style="width:85.5pt"><col style="width:171pt"></colgroup>
+<thead><tr class="fsb-huvud"><td>Artikel</td><td>Vikt</td><td>Recept</td></tr></thead>
+<tbody>
+{rader}
+</tbody>
+</table>
+<!-- /mall:fsbuppgifter -->
+</section>
+<!-- /mall:fsb -->
+<!-- mall:fsbrecept -->
+<tr class="fsb-recept"><td>{namn}<span class="bestallare">{bestallare}</span></td><td>{fore}</td><td>{efter}</td></tr>
+<!-- /mall:fsbrecept -->
+<!-- mall:fsbrad -->
+<tr class="fsb-lista"><td>{artikel} <span class="till" style="color: {tillfarg}">{tilltext}</span><span class="beskrivning">{beskrivning}</span></td><td class="vikt">{vikt}</td><td class="recept">{recept}</td></tr>
+<!-- /mall:fsbrad -->
+<!-- mall:fsbdi -->
+<tr class="fsb-lista di"><td>{artikel} <span class="till" style="color: {tillfarg}">{tilltext}</span></td><td class="vikt">{vikt}</td><td class="recept">{recept}</td></tr>
+<!-- /mall:fsbdi -->
+<!-- mall:valista -->
+<section class="sida valista">
+<div class="fsb-rubrik">Vaktmästeri</div>
+<div class="fsb-dag">{dag}</div>
+{grupper}
+</section>
+<!-- /mall:valista -->
+<!-- mall:vagrupp -->
+<div class="va-grupp {kodklass}" style="--kodtext: {hanteringfarg}">
+<div class="va-underrubrik">{hantering}</div>
+<table class="va-tabell">
+<colgroup><col style="width:235.5pt"><col style="width:70pt"><col style="width:140pt"><col style="width:68pt"></colgroup>
+<thead><tr class="va-huvud"><td>Artikel</td><td>Proddag</td><td>Ätdag</td><td>Vikt</td></tr></thead>
+<tbody>
+{rader}
+</tbody>
+</table>
+</div>
+<!-- /mall:vagrupp -->
+<!-- mall:varad -->
+<tr class="va-rad"><td class="artikel">{artikel}</td><td class="c">{proddag}</td><td class="atdag">{atdag}</td><td class="c">{vikt}</td></tr>
+<!-- /mall:varad -->
+<!-- mall:vafrysin -->
+<tr class="va-frysin"><td colspan="4">{text}</td></tr>
+<!-- /mall:vafrysin -->
+<!-- mall:etiketter -->
+<section class="sida etiketter">
+{etiketter}
+</section>
+<!-- /mall:etiketter -->
+<!-- mall:etikett-va -->
+<div class="etikett {kodklass}" style="--kodtext: {hanteringfarg}">
+<div class="e-topp"><span>Uppack {datum}</span><span class="e-kod">{hantering}</span></div>
+<div class="e-artikel">{artikel}</div>
+<div class="e-vikt">{vikt}<span class="e-totalt">{totalt}</span></div>
+<div class="e-notis">{redigerad}</div>
+<div class="e-till">
+<div class="e-rubrik">Till</div>
+<div class="e-recept">{recept}</div>
+<div class="e-bestallare">{bestallare}</div>
+<div class="e-alternativ">{alternativ}</div>
+</div>
+<div class="e-fot"><div class="e-rubrik">Proddag</div><div class="e-rubrik">Ätdag</div><div>{proddag}</div><div>{atdag}</div></div>
+</div>
+<!-- /mall:etikett-va -->
+<!-- mall:etikett-di -->
+<div class="etikett" style="--kodtext: {tillfarg}">
+<div class="e-topp"><span>Uppack {datum}</span><span class="e-kod">{tilltext}</span></div>
+<div class="e-artikel">{artikel}</div>
+<div class="e-vikt">{vikt}</div>
+<div class="e-till">
+<div class="e-rubrik">Till recept</div>
+<div class="e-recept">{recept}</div>
+</div>
+<div class="e-fot"><div class="e-rubrik">Proddag</div><div class="e-rubrik">Ätdag</div><div>{proddag}</div><div>{atdag}</div></div>
+</div>
+<!-- /mall:etikett-di -->
+<!-- mall:etikett-re -->
+<div class="etikett" style="--kodtext: {tillfarg}">
+<div class="e-topp"><span>Uppgift {datum}</span><span class="e-kod">{tilltext}</span></div>
+<div class="e-artikel">{artikel}</div>
+<div class="e-beskrivning">{beskrivning}</div>
+<div class="e-vikt">{vikt}</div>
+<div class="e-till">
+<div class="e-rubrik">Till</div>
+<div class="e-recept">{recept}</div>
+</div>
+</div>
+<!-- /mall:etikett-re -->
+<!-- mall:kopiafsb -->
+<section class="sida kopiafsb">
+<div class="kopiafsb-rubrik">{bestallare}</div>
+<div class="kopiafsb-dag">{dag}</div>
+<table class="kopiafsb-tabell">
+<colgroup><col style="width:413.5pt"><col style="width:80pt"><col style="width:20pt"></colgroup>
+{recept}
+</table>
+</section>
+<!-- /mall:kopiafsb -->
+<!-- mall:kopiafsbrecept -->
+<tr><td>{namn}</td><td class="h">{efter}</td><td>{efter_enhet}</td></tr>
+<!-- /mall:kopiafsbrecept -->
+<!-- exempel -->
+<section class="sida recept">
+<div class="namn">Köttsoppa AKL0097</div>
+<div class="proddag"><span class="datum">Produktionsdatum: Måndag 2026-05-18</span><span class="kod">AKL0097</span></div>
+<table class="servering">
+<colgroup><col style="width:15.75pt"><col style="width:160pt"><col style="width:58pt"><col style="width:54pt"><col style="width:54pt"><col style="width:61.5pt"><col style="width:17.25pt"><col style="width:61.5pt"><col style="width:17.25pt"></colgroup>
+<tr class="rubrik"><td colspan="3">Serveringsdatum</td><td class="h">Vikt/port</td><td class="h">Antal</td><td class="h">Rå vikt</td><td></td><td class="h">Mängd</td><td></td></tr>
+<tr class="ram grupp"><td colspan="2">Tisdag 2026-05-19 Lunch</td><td colspan="5">Patienterna</td><td class="h">61,88</td><td>kg</td></tr>
+<tr class="ram  "><td></td><td colspan="2" class="alternativ" style="color: #000000">-fläsk</td><td class="h">300 g</td><td class="h">8</td><td class="h v">3,16</td><td class="v">kg</td><td class="h v">2,40</td><td class="v">kg</td></tr>
+<tr class="ram rand "><td></td><td colspan="2" class="alternativ" style="color: #c00000">-mjölkprot.</td><td class="h">300 g</td><td class="h">3</td><td class="h v">1,18</td><td class="v">kg</td><td class="h v">0,90</td><td class="v">kg</td></tr>
+<tr class="ram  "><td></td><td colspan="2" class="alternativ" style="color: #a89032">A-kost</td><td class="h">300 g</td><td class="h">140</td><td class="h v">55,26</td><td class="v">kg</td><td class="h v">42,00</td><td class="v">kg</td></tr>
+<tr class="ram rand "><td></td><td colspan="2" class="alternativ" style="color: #7030a0">E-kost, dessert</td><td class="h">175 g</td><td class="h">45</td><td class="h v">10,37</td><td class="v">kg</td><td class="h v">7,88</td><td class="v">kg</td></tr>
+<tr class="summa"><td colspan="4"></td><td class="h">225 st</td><td class="h">81,42</td><td>kg</td><td class="h">61,88</td><td>kg</td></tr>
+</table>
+<div class="specialkost"><b>Innehåller:</b> Selleri <b>Spår av:</b> Senap</div>
+<table class="ingredienser">
+<colgroup><col style="width:15.75pt"><col style="width:160pt"><col style="width:58pt"><col style="width:54pt"><col style="width:54pt"><col style="width:61.5pt"><col style="width:17.25pt"><col style="width:61.5pt"><col style="width:17.25pt"></colgroup>
+<tr class="rubrik"><td colspan="5">Namn</td><td class="h">Mängd</td><td></td><td class="h">Vikt</td><td></td></tr>
+<tr class=""><td colspan="5">Nötbog tärnad färsk <span class="kod" style="color: #0e4cb0">Avemb. i kyl</span></td><td class="h">11,45</td><td>kg</td><td class="h">11,45</td><td>kg</td></tr>
+<tr class="rand"><td colspan="5">Vatten /H2O</td><td class="h">41,94</td><td>l</td><td class="h">41,94</td><td>kg</td></tr>
+<tr class=""><td colspan="5">Morot tärnad fryst <span class="kod" style="color: #13805f">Uppack</span></td><td class="h">4,80</td><td>kg</td><td class="h">4,80</td><td>kg</td></tr>
+<tr class="slut"><td colspan="9"></td></tr>
+</table>
+<div class="tillagning">Rå vikt: 81,42 kg  (Lättnad: 24,00 %)  Färdig vikt: 61,88 kg  </div>
+<div class="anvisningsrubrik">Tillagningsanvisning</div>
+<div class="anvisning"><div class="rad">KÖTTSOPPA AKL0097</div><div class="tom"></div><div class="rad">Koka upp vätska.</div><div class="rad">Tillsätt potatisen och moroten och koka den tills den nästan är klar.</div></div>
+</section>
+<section class="sida kopiafsb">
+<div class="kopiafsb-rubrik">Restaurang Källan Tisdag</div>
+<div class="kopiafsb-dag">Ätdag: Tisdag 2026-05-19</div>
+<table class="kopiafsb-tabell">
+<colgroup><col style="width:413.5pt"><col style="width:80pt"><col style="width:20pt"></colgroup>
+<tr><td>Köttsoppa AKL0097</td><td class="h">12,00</td><td>kg</td></tr>
+<tr><td>Pannkaka KÄ0412</td><td class="h">4,50</td><td>kg</td></tr>
+</table>
+</section>
+<section class="sida recept">
+<div class="namn">Köttsoppa AKL0097</div>
+<div class="proddag"><span class="datum">Produktionsdatum: Måndag 2026-05-18</span><div class="stampel">Källan Kopia</div><span class="kod">AKL0097</span></div>
+<table class="servering">
+<colgroup><col style="width:15.75pt"><col style="width:160pt"><col style="width:58pt"><col style="width:54pt"><col style="width:54pt"><col style="width:61.5pt"><col style="width:17.25pt"><col style="width:61.5pt"><col style="width:17.25pt"></colgroup>
+<tr class="rubrik"><td colspan="3">Serveringsdatum</td><td class="h">Vikt/port</td><td class="h">Antal</td><td class="h">Rå vikt</td><td></td><td class="h">Mängd</td><td></td></tr>
+<tr class="ram grupp"><td colspan="2">Tisdag 2026-05-19 Lunch</td><td colspan="5">Källan</td><td class="h">12,00</td><td>kg</td></tr>
+<tr class="ram  "><td></td><td colspan="2" class="alternativ" style="color: #000000">Källan lunch</td><td class="h">300 g</td><td class="h">40</td><td class="h v">15,79</td><td class="v">kg</td><td class="h v">12,00</td><td class="v">kg</td></tr>
+<tr class="summa"><td colspan="4"></td><td class="h">40 st</td><td class="h">15,79</td><td>kg</td><td class="h">12,00</td><td>kg</td></tr>
+</table>
+<div class="specialkost"><b>Innehåller:</b> Selleri</div>
+<table class="ingredienser">
+<colgroup><col style="width:15.75pt"><col style="width:160pt"><col style="width:58pt"><col style="width:54pt"><col style="width:54pt"><col style="width:61.5pt"><col style="width:17.25pt"><col style="width:61.5pt"><col style="width:17.25pt"></colgroup>
+<tr class="rubrik"><td colspan="5">Namn</td><td class="h">Mängd</td><td></td><td class="h">Vikt</td><td></td></tr>
+<tr class=""><td colspan="5">Nötbog tärnad färsk <span class="kod" style="color: #0e4cb0">Avemb. i kyl</span></td><td class="h">2,22</td><td>kg</td><td class="h">2,22</td><td>kg</td></tr>
+<tr class="rand"><td colspan="5">Vatten /H2O</td><td class="h">8,13</td><td>l</td><td class="h">8,13</td><td>kg</td></tr>
+<tr class="slut"><td colspan="9"></td></tr>
+</table>
+<div class="tillagning">Rå vikt: 15,79 kg  (Lättnad: 24,00 %)  Färdig vikt: 12,00 kg  </div>
+<div class="anvisningsrubrik">Tillagningsanvisning</div>
+<div class="anvisning"><div class="rad">Koka upp vätska.</div></div>
+</section>
+<section class="sida fsb">
+<div class="fsb-rubrik">Renseriet</div>
+<div class="fsb-dag">Produktionsdag: Måndag 2026-05-18</div>
+<table class="fsb-tabell">
+<colgroup><col style="width:342.5pt"><col style="width:85.5pt"><col style="width:85.5pt"></colgroup>
+<thead><tr class="fsb-huvud"><td>Recept</td><td>Rå vikt</td><td>Tillagad vikt</td></tr></thead>
+<tbody>
+<tr class="fsb-recept"><td>Tomat klyftad Salladsbuffé BS01<span class="bestallare">Källan</span></td><td>7,00 kg</td><td>7,00 kg</td></tr>
+<tr class="fsb-recept"><td>Pizzasallad Salladsbuffé BS0001<span class="bestallare">Källan, Vistet, Garnis</span></td><td>17,21 kg</td><td>17,20 kg</td></tr>
+<tr class="fsb-recept"><td>Blandsallad Salladsbuffé BS0053<span class="bestallare">Patienterna</span></td><td>9,80 kg</td><td>9,80 kg</td></tr>
+</tbody>
+</table>
+<div class="fsb-underrubrik">Uppgifter</div>
+<table class="fsb-tabell">
+<colgroup><col style="width:257pt"><col style="width:85.5pt"><col style="width:171pt"></colgroup>
+<thead><tr class="fsb-huvud"><td>Artikel</td><td>Vikt</td><td>Recept</td></tr></thead>
+<tbody>
+<tr class="fsb-lista"><td>Fänkål färsk <span class="till" style="color: #068f08">Renseriet Tis</span><span class="beskrivning">Ansa och skölj</span></td><td class="vikt">6,41 kg</td><td class="recept">(6,41 kg) Picklad fänkål KS1102</td></tr>
+<tr class="fsb-lista"><td>Morot riven färsk <span class="till" style="color: #c00000">Köket Ons</span><span class="beskrivning">Riv</span></td><td class="vikt">2,40 kg</td><td class="recept">(2,40 kg) Morotssallad KS0210</td></tr>
+<tr class="fsb-lista"><td>Isbergssallad <span class="till" style="color: #068f08">Renseriet Tis 12:00</span><span class="beskrivning"></span></td><td class="vikt">3,20 kg</td><td class="recept">(3,20 kg) Blandsallad Salladsbuffé BS0053</td></tr>
+</tbody>
+</table>
+</section>
+<section class="sida valista">
+<div class="fsb-rubrik">Vaktmästeri</div>
+<div class="fsb-dag">Uppacksdag: Måndag 2026-05-18</div>
+<div class="va-grupp kod-AF" style="--kodtext: #8a069c">
+<div class="va-underrubrik">Avemb. i frys</div>
+<table class="va-tabell">
+<colgroup><col style="width:235.5pt"><col style="width:70pt"><col style="width:140pt"><col style="width:68pt"></colgroup>
+<thead><tr class="va-huvud"><td>Artikel</td><td>Proddag</td><td>Ätdag</td><td>Vikt</td></tr></thead>
+<tbody>
+<tr class="va-rad"><td class="artikel">Falafel</td><td class="c">Tis 19/5</td><td class="atdag">Ons 20/5 Lun, Tor 21/5 Lun</td><td class="c">4,00 kg</td></tr>
+<tr class="va-rad"><td class="artikel">Fiskgratäng</td><td class="c">Tis 19/5</td><td class="atdag">Ons 20/5 Mid</td><td class="c">6,50 kg</td></tr>
+</tbody>
+</table>
+</div>
+<div class="va-grupp kod-AK" style="--kodtext: #0e4cb0">
+<div class="va-underrubrik">Avemb. i kyl</div>
+<table class="va-tabell">
+<colgroup><col style="width:235.5pt"><col style="width:70pt"><col style="width:140pt"><col style="width:68pt"></colgroup>
+<thead><tr class="va-huvud"><td>Artikel</td><td>Proddag</td><td>Ätdag</td><td>Vikt</td></tr></thead>
+<tbody>
+<tr class="va-rad"><td class="artikel">Falukorv skivad</td><td class="c">Tis 19/5</td><td class="atdag">Ons 20/5 Lun</td><td class="c">30,22 kg</td></tr>
+<tr class="va-frysin"><td colspan="4">Det kommer hem 40,00 kg Falukorv skivad, 30,22 kg är på uppack. Frys in 9,78 kg.</td></tr>
+<tr class="va-rad"><td class="artikel">Nötbog tärnad färsk</td><td class="c">Tis 19/5</td><td class="atdag">Ons 20/5 Lun</td><td class="c">11,45 kg</td></tr>
+</tbody>
+</table>
+</div>
+<div class="va-grupp kod-UP" style="--kodtext: #13805f">
+<div class="va-underrubrik">Uppack</div>
+<table class="va-tabell">
+<colgroup><col style="width:235.5pt"><col style="width:70pt"><col style="width:140pt"><col style="width:68pt"></colgroup>
+<thead><tr class="va-huvud"><td>Artikel</td><td>Proddag</td><td>Ätdag</td><td>Vikt</td></tr></thead>
+<tbody>
+<tr class="va-rad"><td class="artikel">Morot tärnad fryst</td><td class="c">Tis 19/5</td><td class="atdag">Ons 20/5 Lun</td><td class="c">4,80 kg</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+<section class="sida etiketter">
+<div class="etikett kod-AF" style="--kodtext: #8a069c">
+<div class="e-topp"><span>Uppack Mån 18/5</span><span class="e-kod">Avemb. i frys</span></div>
+<div class="e-artikel">Falafel</div>
+<div class="e-vikt">4,00 kg<span class="e-totalt"></span></div>
+<div class="e-notis"></div>
+<div class="e-till"><div class="e-rubrik">Till</div><div class="e-recept">(4,00 kg) Falafel KÄ233</div><div class="e-bestallare">Patienterna, Vistet</div><div class="e-alternativ">A-kost, E-kost</div></div>
+<div class="e-fot"><div class="e-rubrik">Proddag</div><div class="e-rubrik">Ätdag</div><div>Tis 19/5</div><div>Ons 20/5 Lun, Tor 21/5 Lun</div></div>
+</div>
+<div class="etikett kod-AK" style="--kodtext: #0e4cb0">
+<div class="e-topp"><span>Uppack Mån 18/5</span><span class="e-kod">Avemb. i kyl</span></div>
+<div class="e-artikel">Grädde 36% laktosfri</div>
+<div class="e-vikt">8,40 kg<span class="e-totalt">av totalt 10,40 kg</span></div>
+<div class="e-notis">(2,00 finns på uppack)</div>
+<div class="e-till"><div class="e-rubrik">Till</div><div class="e-recept">(1,20 kg) Gräddsås AKL0011
+(0,90 kg) Svampsås AKL0042
+(2,10 kg) Potatisgratäng AKL0103
+(0,60 kg) Laxsås AKL0120
+(1,40 kg) Pannacotta KÄ0301
+(0,80 kg) Kycklinggryta AKL0077
+(1,40 kg) Fiskgratäng AKL0121</div><div class="e-bestallare">Patienterna, Källan, Vistet, Garnis</div><div class="e-alternativ">A-kost, Laktosfri, E-kost, Konsistensanpassad</div></div>
+<div class="e-fot"><div class="e-rubrik">Proddag</div><div class="e-rubrik">Ätdag</div><div>Tis 19/5</div><div>Ons 20/5 Lun, Ons 20/5 Mid, Tor 21/5 Lun</div></div>
+</div>
+<div class="etikett" style="--kodtext: #634f03">
+<div class="e-topp"><span>Uppack Måndag 18/5</span><span class="e-kod">Upptining till Ons</span></div>
+<div class="e-artikel">Oxpuré</div>
+<div class="e-vikt">0,49 kg</div>
+<div class="e-till"><div class="e-rubrik">Till recept</div><div class="e-recept">Oxstek timbal TIMGMF15</div></div>
+<div class="e-fot"><div class="e-rubrik">Proddag</div><div class="e-rubrik">Ätdag</div><div>Onsdag 20/5</div><div>Fredag 22/5 Middag</div></div>
+</div>
+<div class="etikett" style="--kodtext: #068f08">
+<div class="e-topp"><span>Uppgift Mån 18/5</span><span class="e-kod">Renseriet Tis</span></div>
+<div class="e-artikel">Rödlök</div>
+<div class="e-beskrivning">Skala</div>
+<div class="e-vikt">0,13 kg</div>
+<div class="e-till"><div class="e-rubrik">Till</div><div class="e-recept">(0,13 kg) Blandsallad Salladsbuffé BS0053</div></div>
+</div>
+</section>
+<!-- /exempel -->
+<!-- mall:fot -->
+<script>
+// Receptnamnet står på en rad (som "Krymp för att passa" i Excel): minska teckenstorleken tills det ryms.
+document.querySelectorAll('.namn').forEach(function (el) {
+    var storlek = parseFloat(getComputedStyle(el).fontSize);
+    while (el.scrollWidth > el.clientWidth && storlek > 8) {
+        storlek -= 0.5;
+        el.style.fontSize = storlek + 'px';
+    }
+});
+// Etiketterna har fast storlek: om mottagarlistan inte ryms provas mindre text, för varje
+// storlek först i en spalt och sedan i två (lägst 7,5px, ca 5,5pt).
+document.querySelectorAll('.e-till').forEach(function (el) {
+    var recept = el.querySelector('.e-recept');
+    var storlek = parseFloat(getComputedStyle(el).fontSize);
+    function ryms() { return el.scrollHeight <= el.clientHeight + 1; }
+    while (!ryms() && storlek >= 7.5) {
+        el.style.fontSize = storlek + 'px';
+        if (recept) recept.style.columnCount = 1;
+        if (ryms()) break;
+        if (recept) recept.style.columnCount = 2;
+        if (ryms()) break;
+        storlek -= 0.5;
+    }
+});
+</script>
+</body></html>
+<!-- /mall:fot -->

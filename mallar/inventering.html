@@ -1,0 +1,290 @@
+<!--
+    Mall för inventeringsunderlaget (ModPrint.bas).
+
+    Sektioner:
+      huvud       - dokumentets början, CSS och <body>
+      tabellhuvud - en tabell per lagerplats: {storagebg} {storagename} {supplierbg} {supplier}
+                    {besdate} {levdate} {tidigare_varubehov} {varubehov}
+      rad         - en artikelrad: {shelfbg} {artname} {artnum} {shelf} {artweight} {calc-info}
+                    {calc} {stockitem} {need} {pre-purchased} {defunit} {order}
+      tabellfot   - avslutar tabellen
+      fot         - dokumentets slut
+
+    Mellan leverantörer lägger koden in <div class="pagebreak"></div>.
+    Utskriften startas automatiskt (onload="window.print()" läggs till av koden).
+    Allt inom exempel-markörerna är bara för förhandsvisning och tas bort av koden.
+    Format för markörerna: se ModMall.bas.
+-->
+<!-- mall:huvud -->
+<!DOCTYPE html>
+<html lang="sv">
+    <head>
+        <title>Inventeringslista</title>
+        <meta charset="utf-8">
+        <meta content="IE=11" http-equiv="X-UA-Compatible">
+        <style type="text/css">
+a, abbr, acronym, address, applet, article, aside, audio, b, big, blockquote, body, canvas, caption, center, cite, code, dd, del, details, dfn, div, dl, dt, em, embed, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, html, i, iframe, img, ins, kbd, label, legend, li, mark, menu, nav, object, ol, output, p, pre, q, ruby, s, samp, section, small, span, strike, strong, sub, summary, sup, table, tbody, td, tfoot, th, thead, time, tr, tt, u, ul, var, video {
+        margin: 0;
+        padding: 0;
+        border: 0;
+        font: inherit;
+        vertical-align: baseline
+    }
+    * {
+        box-sizing: border-box;
+    }
+    @page {
+        size: auto;
+        margin: 15mm 10mm 10mm
+    }
+    @media print {
+        .pagebreak {
+            page-break-after: always
+        }
+    }
+    article, aside, details, figcaption, figure, footer, header, hgroup, menu, nav, section {
+        display: block
+    }
+    body {
+        line-height: 1;
+        font-family: "Segoe UI", Arial, sans-serif;
+        font-size: 10pt
+    }
+    .header, table tr td, table tr th {
+        page-break-inside: avoid
+    }
+
+    ol, ul {
+        list-style: none
+    }
+    strong {
+        font-weight: 700
+    }
+    blockquote, q {
+        quotes: none
+    }
+    blockquote:after, blockquote:before, q:after, q:before {
+        content: '';
+        content: none
+    }
+    table {
+        border-collapse: collapse;
+        border-spacing: 0;
+        width: 100%
+    }
+
+tbody tr:last-child td {
+        border-bottom: 1px solid #aaa
+    }
+
+    thead th {
+        padding: 0px
+    }
+
+    tbody td {
+        padding: 2.5px 5px;
+    }
+
+    tbody tr:nth-child(even) {
+        background: #e0e0e0;
+    }
+
+    tr td:nth-child(1) {
+        text-align: left;
+        width: 1%
+    }
+    tr td:nth-child(2), tr th:nth-child(2) {
+        text-align: left;
+        width: 59%
+    }
+    tr td:nth-child(4) {
+        text-align: center;
+        width: 10%
+    }
+    tr td:nth-child(3) {
+        text-align: center;
+        width: 10%
+    }
+    tr td:nth-child(5) {
+        text-align: right;
+        width: 10%
+    }
+    tr td:nth-child(6) {
+        text-align: right;
+        width: 10%;
+    }
+
+    tr td:nth-child(3), tr td:nth-child(4), tr td:nth-child(5), tr td:nth-child(6) {
+        border-left: 1px solid #aaa
+    }
+
+    tr td:nth-child(6) {
+        border-right: 1px solid #aaa
+    }
+
+    tbody tr td .subtext {
+        font-size: 7pt
+    }
+
+    .header {
+        padding: 5px
+    }
+
+    .hleft {
+        font-size: 14pt;
+        text-align: left;
+        float: left;
+    }
+
+    .hright {
+        font-size: 10pt;
+        float: right;
+        line-height: 16px
+    }
+
+    .artname {
+        font-size: 120%
+    }
+    .artvikt {
+        color: #7c7c7c
+    }
+
+    .inv_ej {
+        display: inline-block;
+        position: relative;
+        width: 100%;
+        height: 1.4em;
+    }
+
+    .inv_ej:after {
+        content: '';
+        position: absolute;
+        width: 100%;
+        height: 2px;
+        background-color: black;
+        left: 0;
+        top: 50%;
+        transform: rotate(15deg);
+        transform-origin: center;
+    }
+
+    /* Förhandsvisning på skärm: sidan som ett vitt kort på grå bakgrund (påverkar inte utskriften).
+       Sidbrytningarna mellan leverantörer visas som ett grått mellanrum som delar kortet. */
+    @media screen {
+        body {
+            background: #d9d9d9;
+            padding: 8mm 0
+        }
+        .sida {
+            width: 210mm;
+            background: #fff;
+            margin: 0 auto 8mm;
+            padding: 15mm 10mm 10mm;
+            box-shadow: 0 1px 4px rgba(0,0,0,.35)
+        }
+        .pagebreak {
+            height: 8mm;
+            background: #d9d9d9;
+            margin: 10mm -10mm 15mm
+        }
+    }
+        </style>
+    </head>
+<body>
+<div class="sida">
+<!-- /mall:huvud -->
+<!-- mall:tabellhuvud -->
+    <table>
+        <thead>
+            <tr>
+                <th colspan="6">
+                    <div style="background-color:white;overflow:hidden;position:relative;padding:0;">
+                        <span class="hleft" style="font-size:15pt;">
+                           <span style="display:inline-block;padding:5px;background-color:{storagebg};border-radius:5pt 5pt 0 0;font-weight:800;">{storagename}</span>
+                           <span style="color:{supplierbg};font-size:13pt;font-weight:600;">{supplier}</span>
+                        </span>
+                        <span class="hright" style="position:absolute;bottom:0;right:0;">
+                              <strong style="font-size:11pt;">Beställs:</strong> {besdate}
+                              <strong style="font-size:11pt;">för leverans</strong> {levdate}
+                        </span>
+                    </div>
+                    <div style="background-color:{storagebg};overflow:hidden;padding:5pt;text-align:right;">
+                        <span style="font-size:8pt;"><strong>Tidigare varubehov:</strong> {tidigare_varubehov} &nbsp;&nbsp; <strong>Varubehov:</strong> {varubehov} </span>
+                    </div>
+                </th>
+            </tr>
+            <tr style="background-color:{storagebg};border-bottom: 1px solid #aaa">
+                <th></th>
+                <th style="position:relative;"><strong>Artikel</strong><div style="position:absolute;bottom:0;right:0;width:10vw;text-align:center;"><strong>Åtgång</strong></div></th>
+                <th><strong>Lager</strong></th>
+                <th><strong>Behov</strong></th>
+                <th><strong>Hemma</strong></th>
+                <th><strong>Beställt</strong></th>
+            </tr>
+        </thead>
+        <tbody>
+<!-- /mall:tabellhuvud -->
+<!-- mall:rad -->
+            <tr>
+                <td style="background-color:{shelfbg}"></td>
+                <td style="vertical-align:middle;overflow:hidden;position:relative;">
+                    <span class="artname">{artname}</span><br>
+                    <span class="subtext" style="font-size:80%">
+                        <span style="font-size:120%;font-weight:600;">{artnum}</span>&nbsp;&nbsp;
+                        <strong>{shelf}</strong>&nbsp;&nbsp;
+                        {artweight}
+                    </span>
+                    <span class="subtext" style="position:absolute;bottom:0;right:0;padding-bottom:2pt;padding-right:2pt;">{calc-info}</span>
+                    <span style="position:absolute;top:0;right:0;width:10vw;text-align:center;padding-top:2pt;">{calc}</span>
+                </td>
+                <td style="vertical-align:middle;">{stockitem}</td>
+                <td style="vertical-align:middle;">{need}<br><span class="subtext">{pre-purchased}</span></td>
+                <td style="vertical-align:middle;">{defunit}</td>
+                <td style="vertical-align:middle;">{order}</td>
+            </tr>
+<!-- /mall:rad -->
+<!-- exempel -->
+            <tr>
+                <td style="background-color:#f4b183"></td>
+                <td style="vertical-align:middle;overflow:hidden;position:relative;">
+                    <span class="artname">Exempelartikel, grädde 36%</span><br>
+                    <span class="subtext" style="font-size:80%">
+                        <span style="font-size:120%;font-weight:600;">123456</span>&nbsp;&nbsp;
+                        <strong>A2</strong>&nbsp;&nbsp;
+                        <strong>Netto: </strong>1.00 kg&nbsp; <strong>x</strong>6&nbsp; <strong>Krt: </strong>6.00 kg
+                    </span>
+                    <span class="subtext" style="position:absolute;bottom:0;right:0;padding-bottom:2pt;padding-right:2pt;">2.00 : 3.50 kg</span>
+                    <span style="position:absolute;top:0;right:0;width:10vw;text-align:center;padding-top:2pt;">5.50 kg</span>
+                </td>
+                <td style="vertical-align:middle;">2 krt</td>
+                <td style="vertical-align:middle;">12.00 kg<br><span class="subtext"></span></td>
+                <td style="vertical-align:middle;">krt</td>
+                <td style="vertical-align:middle;"></td>
+            </tr>
+            <tr>
+                <td style="background-color:#9dc3e6"></td>
+                <td style="vertical-align:middle;overflow:hidden;position:relative;">
+                    <span class="artname">Exempelartikel med förköp</span><br>
+                    <span class="subtext" style="font-size:80%">
+                        <span style="font-size:120%;font-weight:600;">654321</span>&nbsp;&nbsp;
+                        <strong>B1</strong>&nbsp;&nbsp;
+                        <strong>Netto: </strong>2.50 kg
+                    </span>
+                    <span class="subtext" style="position:absolute;bottom:0;right:0;padding-bottom:2pt;padding-right:2pt;">0,00 kg</span>
+                    <span style="position:absolute;top:0;right:0;width:10vw;text-align:center;padding-top:2pt;">0,00 kg</span>
+                </td>
+                <td style="vertical-align:middle;"></td>
+                <td style="vertical-align:middle;"><span style="color:#2cd13f">+1.00 kg</span><br><span class="subtext">F: 5.00 kg</span></td>
+                <td style="vertical-align:middle;"><span class="inv_ej"></span></td>
+                <td style="vertical-align:middle;"><span class="inv_ej"></span></td>
+            </tr>
+<!-- /exempel -->
+<!-- mall:tabellfot -->
+        </tbody>
+    </table>
+<!-- /mall:tabellfot -->
+<!-- mall:fot -->
+</div>
+</body>
+</html>
+<!-- /mall:fot -->

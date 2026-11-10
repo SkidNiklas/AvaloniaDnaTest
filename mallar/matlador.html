@@ -1,0 +1,188 @@
+<!--
+    Mall för Källans matlådor (modMatlador.bas). En blankett där man fyller i hur många
+    matlådor som packades av varje måltid. Samma designsystem som svinnlista.html och
+    patientmeny.html - färgvariablerna i :root är desamma, ändra dem i alla mallarna.
+
+    Sektioner (en inre sektion blir en platshållare med samma namn i den yttre):
+      huvud          - dokumentets början, CSS och <body>: {vecka}
+      sida           - utskriftssidan (ett A4 liggande) med rubrik och tabell:
+                       {vecka} {matsedelsvecka} {datum} ("5 – 11 okt 2026") {dagrad}
+        dagrad       - en rad per dag: {dagklass} ("alt" på varannan veckodag) {dag} ("Måndag")
+                       {dagdatum} ("5/10") {tillv} (tillverkningsdag, "6/10 – 7/10" när lunch
+                       och middag tillverkas olika dagar). Fyra rutor (cell eller tomcell) i
+                       kolumnernas ordning ersätter cell-sektionen; tomcell-sektionens plats blir tom.
+          cell       - en matlåda: {cellklass} ("lunch"/"middag") {nummer} {bastfore},
+                       delarna ersätter del-sektionen, och en tom ruta för antal packade
+            del      - en del: {namn} {vikt}
+          tomcell    - tom ruta: {cellklass} = "hoppas" (hoppas över), "saknas" (inte ifylld i
+                       MatildaPlus) eller "tom" (finns inte i urklippet). {maltid} = måltidens namn
+                       utan receptkoder för "hoppas", annars tom
+      fot            - dokumentets slut
+
+    Allt ska rymmas på ett blad: raderna är högst --rad-h höga. Skriptet i huvudet gör raderna
+    lägre om sidan blir för hög och minskar sedan textstorleken (--fs) tills texten får plats
+    i rutorna, innan utskriften startar.
+    Utskriften startas av koden (MedAutoUtskrift), så att förhandsvisningen av mallen inte skriver ut.
+    Allt inom exempel-markörerna är bara för förhandsvisning och tas bort av koden.
+    Format för markörerna: se ModMall.bas.
+-->
+<!-- mall:huvud -->
+<!DOCTYPE html>
+<html lang="sv"><head><meta charset="utf-8">
+<title>Källans matlådor – Vecka {vecka}</title>
+<style>
+:root {
+    --ink:          #1d2433;   /* brödtext */
+    --ink-muted:    #5d6675;   /* sekundär text */
+    --navy:         #22324f;   /* rubrikrad, dagkolumn */
+    --navy-2:       #3a4d70;   /* varannan dag, matsedelsvecka */
+    --on-navy:      #ffffff;
+    --rule:         #c3c9d3;   /* tunna linjer */
+    --rule-strong:  #22324f;   /* linje mellan dagar */
+    --dinner:       #f7f1e4;   /* middagsrutor */
+    --empty:        #f3f5f8;   /* tomma rutor */
+    --fs:           8.5pt;     /* textstorlek, minskas av skriptet om sidan inte får plats */
+    --rad-h:        30mm;    /* största höjd per dag; skriptet sänker den om sidan inte får plats */
+}
+
+@page { size: A4 landscape; margin: 7mm 9mm; }
+* { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
+
+body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: var(--fs); color: var(--ink); margin: 0; font-variant-numeric: tabular-nums; }
+
+/* ---------- Sidhuvud (samma som patientmenyn) ---------- */
+.sheet-head {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 6mm; margin: 0 0 2mm 0; padding-bottom: 1.4mm;
+    border-bottom: 0.6mm solid var(--navy);
+}
+.sheet-head h1 { margin: 0; font-size: 15pt; font-weight: 700; letter-spacing: -0.01em; line-height: 1; display: flex; align-items: baseline; gap: 3mm; }
+.sheet-head h1 > span { white-space: nowrap; }
+.sheet-head .week { font-size: 10pt; font-weight: 700; color: var(--on-navy); background: var(--navy); padding: 0.6mm 2mm; border-radius: 1mm; position: relative; top: -0.8mm; }
+.sheet-head .week.cycle { background: var(--navy-2); }
+.sheet-head .dates { font-size: 10pt; font-weight: 400; color: var(--ink-muted); }
+.sheet-head .info { font-size: 8pt; color: var(--ink-muted); white-space: nowrap; }
+
+/* ---------- Tabellen ---------- */
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th {
+    font-size: 9pt; font-weight: 700; text-align: left; vertical-align: middle;
+    background: var(--navy); color: var(--on-navy);
+    border: 0.25mm solid var(--navy); border-left-color: #4a5c7d; padding: 1.2mm 2mm;
+}
+th.tom { background: transparent; border: none; }   /* hörnet ovanför dagkolumnen */
+
+td { border: 0.25mm solid var(--rule); padding: 1mm 1.6mm; vertical-align: top; background: #fff; height: var(--rad-h); }
+tr { break-inside: avoid; }
+tr + tr > td { border-top: 0.6mm solid var(--rule-strong); }
+
+/* Dagkolumn – mörk, varannan dag ljusare */
+td.dag { background: var(--navy); color: var(--on-navy); border-color: var(--navy); vertical-align: middle; font-weight: 700; font-size: 10pt; }
+td.dag.alt { background: var(--navy-2); }
+td.dag small { display: block; font-weight: 400; font-size: 8pt; opacity: 0.9; }
+td.dag .tillv { margin-top: 1.2mm; font-size: 7pt; }
+
+td.middag { background: var(--dinner); }
+td.hoppas, td.saknas, td.tom { background: var(--empty); }
+td.hoppas { vertical-align: middle; text-align: center; }
+td.hoppas .maltid { display: block; color: var(--ink-muted); opacity: 0.75; line-height: 1.2; }   /* måltidens namn, som platshållare */
+td.hoppas::after { content: "Ingen matlåda"; display: block; margin-top: 0.8mm; color: var(--ink-muted); font-style: italic; font-size: 7.5pt; }
+.maltid:empty { display: none; }
+
+/* Rutan: till vänster måltidsnummer och delarna, till höger en smal kolumn med bäst före
+   överst och rutan för antal packade nederst (så att texten får hela höjden) */
+.ruta { display: flex; height: 100%; gap: 1.5mm; }
+.ruta .text { flex: 1; min-width: 0; }
+.ruta .nr { font-weight: 700; font-size: 1.1em; white-space: nowrap; }
+.ruta ul { list-style: none; margin: 0.4mm 0 0 0; padding: 0; line-height: 1.2; }
+.ruta .vikt { color: var(--ink-muted); white-space: nowrap; }
+.ruta .vikt:not(:empty)::before { content: ", "; }
+.ruta .hoger { flex: 0 0 17mm; display: flex; flex-direction: column; align-items: stretch; justify-content: space-between; text-align: center; }
+.ruta .bf { font-size: 7pt; color: var(--ink-muted); line-height: 1.15; }
+.ruta .antal { font-size: 7pt; font-weight: 700; }
+.ruta .antal .fält { display: block; height: 9mm; margin-top: 0.4mm; border: 0.4mm solid var(--ink); border-radius: 1mm; background: #fff; }
+
+/* Förhandsvisning på skärm (påverkar inte utskriften) */
+@media screen {
+    body { background: #d4d7dc; padding: 8mm 0; }
+    .sida { width: 297mm; background: #fff; margin: 0 auto 8mm; padding: 7mm 9mm; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+    td.saknas::after { content: "Inte ifylld i MatildaPlus"; color: var(--ink-muted); font-style: italic; font-size: 7.5pt; }
+}
+</style>
+<script>
+/* Allt ska rymmas på ett blad: raderna fyller A4-höjden minus marginalerna (högst --rad-h)
+   och texten krymps tills ingen ruta svämmar över. Körs före onload, där utskriften startas. */
+document.addEventListener('DOMContentLoaded', function () {
+    var sida = document.querySelector('.sida');
+    if (!sida) return;
+    var mm = document.createElement('div');
+    mm.style.cssText = 'position:absolute;visibility:hidden;height:100mm';
+    document.body.appendChild(mm);
+    var pxPerMm = mm.offsetHeight / 100;
+    mm.remove();
+
+    var maxHöjd = (210 - 2 * 7) * pxPerMm;   /* A4 liggande minus @page-marginalerna */
+    var rot = document.documentElement;
+    var huvud = sida.querySelector('.sheet-head');
+    var tabell = sida.querySelector('table');
+    var rutor = document.querySelectorAll('.ruta');
+    var dagar = tabell.querySelectorAll('td.dag').length;
+
+    function sidHöjd() {
+        return huvud.offsetHeight + parseFloat(getComputedStyle(huvud).marginBottom) + tabell.offsetHeight;
+    }
+    function rutaSvämmarÖver() {
+        for (var i = 0; i < rutor.length; i++) {
+            if (rutor[i].scrollHeight > rutor[i].parentNode.clientHeight + 1) return true;
+        }
+        return false;
+    }
+
+    /* --rad-h är ett tak. Varje varv: krymp texten tills den ryms i rutorna (då är alla rader
+       lika höga), mät sidan och ändra radhöjden med det som är över eller fattas, delat på
+       antalet dagar. Mätningen tar med alla kantlinjer och rubriker, så det blir rätt i
+       alla webbläsare. Blir klart på 2-3 varv. */
+    var fs = parseFloat(getComputedStyle(rot).getPropertyValue('--fs'));
+    var prov = document.createElement('div');
+    prov.style.cssText = 'position:absolute;visibility:hidden;height:var(--rad-h)';
+    document.body.appendChild(prov);
+    var tak = prov.offsetHeight;
+    prov.remove();
+    var rad = tak;
+    for (var varv = 0; varv < 10; varv++) {
+        while (fs > 5 && rutaSvämmarÖver()) {
+            fs -= 0.25;
+            rot.style.setProperty('--fs', fs + 'pt');
+        }
+        if (dagar === 0) break;
+        var ny = Math.min(tak, rad + Math.floor((maxHöjd - sidHöjd()) / dagar));
+        if (ny === rad) break;
+        rad = ny;
+        rot.style.setProperty('--rad-h', (rad / pxPerMm).toFixed(3) + 'mm');
+    }
+});
+</script>
+</head><body>
+<!-- /mall:huvud -->
+<!-- mall:sida -->
+<div class="sida">
+<header class="sheet-head">
+  <h1><span>Källans matlådor</span> <span class="week">Vecka {vecka}</span> <span class="week cycle">Matsedelsvecka {matsedelsvecka}</span> <span class="dates">{datum}</span></h1>
+  <span class="info">Fyll i antal packade matlådor</span>
+</header>
+<table>
+<colgroup><col style="width:22mm"><col><col><col><col></colgroup>
+<tr><th class="tom"></th><th>Lunch A</th><th>Lunch VEG</th><th>Middag A</th><th>Middag VEG</th></tr>
+<!-- mall:dagrad -->
+<tr><td class="dag {dagklass}">{dag} <small>{dagdatum}</small><small class="tillv">Tillv. {tillv}</small></td><!-- mall:cell --><td class="{cellklass}"><div class="ruta"><div class="text"><div class="nr">{nummer}</div><ul><!-- mall:del --><li><span class="namn">{namn}</span><span class="vikt">{vikt}</span></li><!-- /mall:del --></ul></div><div class="hoger"><div class="bf">Bäst före<br>{bastfore}</div><div class="antal">Antal packade<span class="fält"></span></div></div></div></td><!-- /mall:cell --><!-- mall:tomcell --><td class="{cellklass}"><span class="maltid">{maltid}</span></td><!-- /mall:tomcell --></tr>
+<!-- /mall:dagrad -->
+<!-- exempel -->
+<tr><td class="dag">Måndag <small>5/10</small><small class="tillv">Tillv. 2/10</small></td><td class="lunch"><div class="ruta"><div class="text"><div class="nr">KÄML35</div><ul><li><span class="namn">Kycklinglasagne med mozzarella</span><span class="vikt">350g</span></li><li><span class="namn">Skivad morot</span><span class="vikt">70g</span></li></ul></div><div class="hoger"><div class="bf">Bäst före<br>5/10</div><div class="antal">Antal packade<span class="fält"></span></div></div></div></td><td class="lunch"><div class="ruta"><div class="text"><div class="nr">KÄMLV30</div><ul><li><span class="namn">Grönsaksjansson</span><span class="vikt">350g</span></li><li><span class="namn">Broccoli</span><span class="vikt">70g</span></li></ul></div><div class="hoger"><div class="bf">Bäst före<br>5/10</div><div class="antal">Antal packade<span class="fält"></span></div></div></div></td><td class="middag"><div class="ruta"><div class="text"><div class="nr">KÄML37</div><ul><li><span class="namn">Kycklingsås m. soltorkad tomat</span><span class="vikt">200g</span></li><li><span class="namn">Ris</span><span class="vikt">150g</span></li><li><span class="namn">Skivad morot</span><span class="vikt">70g</span></li></ul></div><div class="hoger"><div class="bf">Bäst före<br>5/10</div><div class="antal">Antal packade<span class="fält"></span></div></div></div></td><td class="middag"><div class="ruta"><div class="text"><div class="nr">KÄMLV45</div><ul><li><span class="namn">Lasagne m. linser &amp; keso</span><span class="vikt">350g</span></li><li><span class="namn">Skivad morot</span><span class="vikt">70g</span></li></ul></div><div class="hoger"><div class="bf">Bäst före<br>5/10</div><div class="antal">Antal packade<span class="fält"></span></div></div></div></td></tr>
+<tr><td class="dag alt">Tisdag <small>6/10</small><small class="tillv">Tillv. 5/10</small></td><td class="lunch"><div class="ruta"><div class="text"><div class="nr">KÄML85</div><ul><li><span class="namn">Fisksoppa med saffran</span><span class="vikt">450g</span></li></ul></div><div class="hoger"><div class="bf">Bäst före<br>8/10</div><div class="antal">Antal packade<span class="fält"></span></div></div></div></td><td class="hoppas"><span class="maltid">Pannkakor med sylt, Grädde</span></td><td class="middag"><div class="ruta"><div class="text"><div class="nr">KÄML49</div><ul><li><span class="namn">Portergryta</span><span class="vikt">200g</span></li><li><span class="namn">Potatis</span><span class="vikt">150g</span></li><li><span class="namn">Bukettgrönsaker</span><span class="vikt">70g</span></li></ul></div><div class="hoger"><div class="bf">Bäst före<br>8/10</div><div class="antal">Antal packade<span class="fält"></span></div></div></div></td><td class="saknas"></td></tr>
+<!-- /exempel -->
+</table>
+</div>
+<!-- /mall:sida -->
+<!-- mall:fot -->
+</body></html>
+<!-- /mall:fot -->

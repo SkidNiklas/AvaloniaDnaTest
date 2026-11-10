@@ -1,5 +1,9 @@
 # AvaloniaDnaTest
 
+**Aktuell uppföljning:** den fördröjda Open-uppdateringen är undersökt och aktiveringsordningen förbättrad. Grön Open har verifierats visuellt medan Avalonia har fokus. Se [rapporten](artifacts/ribbon-thread-investigation.md) och sista README-avsnittet för aktuella resultat och begränsningar.
+
+**Senaste version: dynamisk Ribbon-feedback.** Ready/Loading/Open, inbäddade ikoner och uppstartsmätning är implementerade. Release-bygge och paketering har 0 fel/varningar. Se avsnittet **Dynamisk Ribbon-feedback – 2026-11-10** sist i dokumentet för aktuella testresultat, begränsningar och klientprotokoll; äldre testresultat nedan är historik.
+
 Tekniskt proof-of-concept för **Avalonia 12.1.5 + Excel-DNA 1.9.0 + .NET 8**, Windows x64. Projektet är fristående och ligger helt i `F:\AvaloniaDnaTest`.
 
 **Resultat 2026-11-10, Skia-felsökning:** ny packad XLL byggd med noll varningar. Felet reproducerades isolerat och avhjälptes med en assemblyspecifik native-resolver. Den nya XLL-filen laddades i Excel x64 och Ribbon-callbackens fönsteröppning slutfördes utan undantag. Alla tre native-modulernas verkliga temporära sökvägar verifierades. Visuell kontroll, upprepade fönstercykler i Excel och ren klient återstår; användaren stoppade datorstyrningen med Escape.
@@ -163,3 +167,65 @@ Hjälpen skapar en egen Excel-instans, en osparad testbok med `AvaloniaPoC!B3 = 
 - [Avalonia 12.1.5: dispatcher och MainLoop](https://github.com/AvaloniaUI/Avalonia/blob/12.1.5/src/Avalonia.Base/Threading/Dispatcher.MainLoop.cs)
 - [Excel-DNA 1.9.0: native extrahering](https://github.com/Excel-DNA/ExcelDna/blob/v1.9.0-Release/Source/ExcelDna.ManagedHost/AssemblyManager.cs)
 - [Excel-DNA 1.9.0: AssemblyLoadContext](https://github.com/Excel-DNA/ExcelDna/blob/v1.9.0-Release/Source/ExcelDna.ManagedHost/ExcelDnaAssemblyLoadContext.cs)
+
+## Dynamisk Ribbon-feedback – 2026-11-10
+
+Knappen använder `getLabel`, `getImage` och `getEnabled` samt `onLoad` för att spara `IRibbonUI`. Tillstånden är:
+
+| Tillstånd | Text | Ikon | Aktiv |
+|---|---|---|---|
+| Ready | Öppna testfönster | Blått fönster | Ja |
+| Loading | Startar... | Orange laddningspil | Nej |
+| Open | Visa testfönster | Grönt fönster | Ja |
+
+Tre PNG-resurser med 32 × 32 pixlar och transparent RGBA-bakgrund är inbäddade i AddIn-assemblyn, som packas i XLL-filen. `scripts/New-RibbonIcons.ps1` återskapar dem. Inga ikonfiler behövs på klienten. `python scripts/verify-ribbon.py` dekomprimerar slutfilens verkliga AddIn-resurs och verifierar assemblybytes, resursnamn, PNG-bytes, storlek och alfakanal samt befintliga native-payloads.
+
+### Schemaläggning och omritning
+
+Klicket sätter Loading och anropar `InvalidateControl("OpenTest")` på Excel-tråden. Callbacken returnerar vid en asynkron `Task.Delay(120)`. Efter denna icke blockerande tidsfrist köas starten med `ExcelAsyncUtil.QueueAsMacro`. Excels HWND hämtas där, den oförändrade native-resolvern konfigureras och den befintliga dedikerade STA-tråden startar Avalonia. Ingen `DoEvents`, `Thread.Sleep` eller `Task.Run` används. Även Excel-information och Om går genom samma spärr mot parallella starter.
+
+120 ms är en möjlighet för Excels meddelandeloop att behandla Ribbon-callbacks och målning, **ingen garanti för avslutad omritning**. Varken en timer eller `QueueAsMacro` är en paint-barriär. Om Excel är upptaget kan callback/målning och makrokön fördröjas; mycket snabba starter kan ge kort synlig Loading. Ingen synkron väntan på målning införs. `InvalidateControl` ogiltigförklarar cachade värden enligt [Microsofts API-dokumentation](https://learn.microsoft.com/en-us/dotnet/api/microsoft.office.core.iribbonui.invalidatecontrol); [Excel-DNA beskriver QueueAsMacro](https://excel-dna.net/docs/guides-advanced/performing-asynchronous-work/) för övergång till Excels huvudtråd i makrokontext.
+
+Efter `ShowAsync` köas Open tillbaka till Excel-tråden om fönstret fortfarande är synligt. Om det redan har stängts väljs Ready. `WindowClosed` köar också Ready och kontrollerar aktuell synlighet så att en gammal stängningsnotis inte skriver över en senare öppning. Befintligt fönster återanvänds och aktiveras; minimerat fönster återställs. En separat busy-spärr skyddar även innan Excel hunnit läsa `getEnabled`. Fel loggas genom befintlig `DiagnosticLog.Failure` med hela undantagskedjan, återställer Ready och visar felmeddelande med loggsökväg. En misslyckad global Avalonia-initiering kräver fortfarande omstart av Excel; knappen är åter aktiverad men det utlovas ingen säker ominitiering av den processglobala runtime-miljön. Vid AutoClose ignoreras sena köade UI-uppdateringar.
+
+### Mätning och verifierat resultat
+
+`Stopwatch` mäter klick → Loading, Avalonia setup → dispatcher redo (en gång per runtime) och klick → visat/aktiverat fönster. Loggen anger `cold`, `reopen` eller `activate`, och differensen `cold-minus-current`. Klicktiden inkluderar 120 ms schemaläggning och eventuell väntan på Excel. Synligt betyder att `Show()`/aktivering slutförts och `IsVisible` är satt; första färdigrenderade bildrutan mäts inte. Logg: `%TEMP%\AvaloniaDnaTest\diagnostics.log`.
+
+Verifierat för denna version:
+
+- Hela solutionen byggd i Release och XLL packad: **0 fel, 0 varningar** (`artifacts/ribbon-build.log`).
+- Testvärd: tre öppna/stäng-cykler, samma fönster vid aktivering, stängningshändelser/synlighet samt befintliga TextBox-, Slider/ProgressBar-, DataGrid-, tema- och asynkrona servicetester: **PASS** (`artifacts/ribbon-smoke.log`).
+- Alla tre ikoner och native-payloads verifierade i färdig XLL; isolerade Skia/HarfBuzz-resolvertester: **PASS** (`artifacts/ribbon-payloads.txt`, `ribbon-native-payloads.txt`). `PackedNativeLibraries.cs` är oförändrad.
+- Ny XLL laddad från `dist` i Excel x64. Ready och inaktiverad Loading observerade i Ribbon. Open-texten observerades efter att Excel åter fått fokus. Fönstrets visning och native-laddning loggades utan startfel.
+- Excel kallstart: klick → Loading **0,91 ms**, Avalonia-initiering **688,17 ms**, klick → synligt **1 616,80 ms**. Ett klick med redan öppet fönster: **146,41 ms**, skillnad **1 470,39 ms** mot kallstart. Detta är enstaka observationer, inte ett prestandalöfte. Återöppning efter stängning mättes inte i Excel.
+- Excel stängdes via sin vanliga stängningsknapp med Avalonia öppet; Excel-processen försvann. Någon separat `AutoClose complete`-rad kunde inte bekräftas i denna körning.
+
+Datorstyrningen kunde inte välja det ägda Avalonia-fönstret som separat målfönster. Faktisk fokusöverföring, fönsterstängning → Ready och återöppning i Excel, felvägen i Excel samt full regression av de tidigare åtta manuella funktionstesterna är därför **inte verifierade för denna version**. Loggkopian finns i `artifacts/ribbon-excel-diagnostics.log`. Inga avsiktliga fel injicerades i den distribuerade XLL-filen.
+
+### Kort testprotokoll på jobbdatorn
+
+Kopiera endast `F:\AvaloniaDnaTest\dist\AvaloniaDnaTest-x64.xll` till en tom användarkatalog. Ingen installation, administratörsrättighet eller medföljande extern DLL behövs för själva tillägget. Befintlig Excel x64 och .NET 8 Desktop Runtime x64 krävs; om runtime saknas är detta klientkrav ännu inte uppfyllt. Excel-DNA extraherar automatiskt inbäddade native-DLL:er till skrivbar temporär katalog under körning. Testa med organisationens ordinarie tilläggspolicy.
+
+| Test | Förväntat | Resultat på klienten |
+|---|---|---|
+| Ny Excel-process, öppna XLL, första klicket | Blå Ready → orange inaktiverad Startar... → grön Visa testfönster; Excel reagerar under start | Ej kört |
+| Snabba dubbelklick och klick på Om/Excel-information under start | En initiering och ett fönster, inga parallella starter | Ej kört |
+| Klick med öppet/minimerat fönster | Samma fönster aktiveras/återställs | Ej kört |
+| Stäng fönstret och upprepa minst tio gånger | Ready återställs; återöppning använder samma runtime, `reopen` loggas | Ej kört |
+| TextBox med svenska tecken, ComboBox, radio, CheckBox, DatePicker, Slider, DataGrid, knappar | Alla befintliga kontroller fungerar; Slider följs av ProgressBar | Ej kört |
+| Ljust/mörkt tema och Excel-information/Om | Tema växlar; riktig aktiv cell/bok/blad läses; befintliga felmeddelanden fungerar | Ej kört |
+| Startfel i separat testmiljö där fel kan reproduceras | Ready återställs, begriplig dialog och full undantagskedja i loggen; starta om Excel efter globalt initieringsfel | Ej kört |
+| Avsluta Excel med fönster och informationsanrop öppna | Normal processavslutning utan kvarvarande Excel-process | Ej kört |
+
+Spara hela diagnostikloggen efter test och jämför `cold` med `reopen`. Notera om Loading faktiskt hann synas och om ikonerna har rätt färg/transparens. Den färdiga distributionskatalogen innehåller enbart XLL-filen.
+
+## Uppföljning: fördröjd Ribbon-uppdatering
+
+Aktuell [felsökningsrapport med trådkarta, före/efter-mätningar, visuell verifiering och begränsningar](artifacts/ribbon-thread-investigation.md). Ingen befintlig COM-trådbrist hittades: InvalidateControl kördes redan på Excels huvudtråd. Excel sköt i den reproducerade körningen upp callbacks när Avalonia redan hade fokus.
+
+Nu visas fönstret först utan automatisk aktivering, Open invalideras via Excel-tråden och efter en asynkron 120 ms-frist begär Avalonia fokus. Väntan på makrot begränsas till 500 ms. Grön ikon och **Visa testfönster** har verifierats visuellt medan Avalonia fortfarande hade fokus. Enabled-uttrycket och native-resolvern är oförändrade. Excel äger fortfarande faktisk callback-/målningstid; ingen paint-garanti ges vid upptaget eller redan inaktivt Excel.
+
+Nya loggrader innehåller apartment, tråd-ID, foreground-HWND, tillstånds-/invaliderings-/callback-tider och makrokötid. Trace-loggningen buffrar disk-I/O; metadata fångas på händelsetråden. Se rapporten för tolkning och loggbegränsningar. Release-bygge: 0 fel/varningar. Livscykel, återanvändning, stängning under aktiveringsfasen, kontroll-/temasmoke och packade resurser passerar. Excel-testet verifierade även återöppning, Ready och normal processavslutning.
+
+Kort klienttest: starta ny Excel-process, öppna endast XLL-filen, klicka och observera Loading → grön Open utan att återaktivera Excel. Stäng och öppna tio gånger; prova befintligt/minimerat fönster, upptaget Excel, startfel och normal avstängning med väntande informationsanrop. Kontrollera `queue-ms`, `since-invalidate-ms`, `since-window-shown-ms` och eventuella `beforeActivation.timeout` i loggen. Full manuell regression och busy-/feltester på jobbdatorn återstår.

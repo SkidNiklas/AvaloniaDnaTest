@@ -1,0 +1,160 @@
+<!--
+    Mall för svinnlistan (modSvinnlista.bas). Samma designsystem som patientmeny.html -
+    färgvariablerna i :root är desamma, ändra dem i båda mallarna.
+
+    Sektioner (en inre sektion blir en platshållare med samma namn i den yttre):
+      huvud          - dokumentets början, CSS och <body>: {vecka}
+      sida           - en utskriftssida (A4 stående) med rubrik och tabell, skrivs en gång per sida.
+                       Sida 1 = måndag–torsdag lunch, sida 2 = torsdag middag–söndag:
+                       {vecka} {matsedelsvecka} {datum} ("28 sep – 4 okt 2026") {rad}
+        rad          - en rad per komponent, varje måltid fylls ut med tomma rader till minst 4:
+                       {radklass} {dagcell} {maltidcell} {ratt}
+                       radklass: "rand" på varannan rad, "middag-row" på middagens rader,
+                       "ny-dag" på dagens första rad (tjock linje ovanför)
+          dagcell    - dagen, bara på dagens första rad på sidan: {dagklass} ("alt" på varannan veckodag)
+                       {dagrader} {dag} ("Mån") {dagdatum} ("28/9")
+          maltidcell - Lunch/Middag, bara på måltidens första rad: {maltidklass} ("lunch"/"middag")
+                       {maltidrader} {maltid}
+      fot            - dokumentets slut
+
+    Radhöjden styrs av --row-h i :root. En sida har 28 rader (7 måltider × 4) om ingen
+    måltid har fler än 4 delar.
+    Vid laddning tonas receptkoder (t.ex. AKL232) ner. Därefter startas utskriften, men bara
+    om <body> har attributet data-autoprint (läggs till av modSvinnlista.bas), så att
+    förhandsvisningen av mallen inte skriver ut.
+    Allt inom exempel-markörerna är bara för förhandsvisning och tas bort av koden.
+    Format för markörerna: se ModMall.bas.
+-->
+<!-- mall:huvud -->
+<!DOCTYPE html>
+<html lang="sv"><head><meta charset="utf-8">
+<title>Dukningssvinn – Vecka {vecka}</title>
+<style>
+:root {
+    --ink:          #1d2433;   /* brödtext */
+    --ink-muted:    #5d6675;   /* receptkoder, sekundär text */
+    --navy:         #22324f;   /* rubrikrad, dagkolumn */
+    --navy-2:       #3a4d70;   /* varannan dag, matsedelsvecka */
+    --on-navy:      #ffffff;
+    --rule:         #c3c9d3;   /* tunna linjer */
+    --rule-strong:  #22324f;   /* linje mellan dagar */
+    --zebra:        #f3f5f8;   /* varannan rad */
+    --dinner:       #f7f1e4;   /* middagsrad */
+    --dinner-zebra: #eee6d4;   /* middagsrad × varannan rad */
+    --row-h:        8.5mm;
+}
+
+@page { size: A4 portrait; margin: 8mm 13mm; }
+* { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: 9.5pt; color: var(--ink); margin: 0; font-variant-numeric: tabular-nums; }
+
+/* ---------- Sidhuvud (samma som patientmenyn) ---------- */
+.sheet-head {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 6mm; margin: 0 0 2.5mm 0; padding-bottom: 1.6mm;
+    border-bottom: 0.6mm solid var(--navy);
+}
+.sheet-head h1 { margin: 0; font-size: 16pt; font-weight: 700; letter-spacing: -0.01em; line-height: 1; display: flex; align-items: baseline; gap: 3mm; }
+.sheet-head h1 > span { white-space: nowrap; }
+.sheet-head .week { font-size: 10pt; font-weight: 700; color: var(--on-navy); background: var(--navy); padding: 0.6mm 2mm; border-radius: 1mm; position: relative; top: -0.8mm; }
+.sheet-head .week.cycle { background: var(--navy-2); }
+.sheet-head .dates { font-size: 10pt; font-weight: 400; color: var(--ink-muted); }
+
+/* ---------- Tabellen ---------- */
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th {
+    font-size: 8pt; font-weight: 700; line-height: 1.15; text-align: center; vertical-align: middle;
+    background: var(--navy); color: var(--on-navy);
+    border: 0.25mm solid var(--navy); border-left-color: #4a5c7d; padding: 1.5mm 1.5mm;
+}
+th.ratt { text-align: left; font-size: 8pt; }
+th .info { display: block; font-size: 6.5pt; font-weight: 400; font-style: italic; opacity: 0.85; margin-top: 0.5mm; }
+th.tom { background: transparent; border: none; }   /* hörnet ovanför dag/måltid */
+
+td {
+    border: 0.25mm solid var(--rule); height: var(--row-h); padding: 0 1.8mm;
+    vertical-align: middle; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    background: #fff;
+}
+tr { break-inside: avoid; }
+
+/* Dagkolumn – mörk, varannan dag ljusare, datum under dagnamnet */
+td.dag { background: var(--navy); color: var(--on-navy); border-color: var(--navy); text-align: center; padding: 0; font-weight: 700; }
+td.dag.alt { background: var(--navy-2); }
+td.dag small { display: block; font-weight: 400; font-size: 7pt; opacity: 0.85; }
+
+/* Måltidskolumn – lunch vit, middag sand (samma färger som patientmenyn) */
+td.maltid { text-align: center; padding: 0; color: var(--ink-muted); }
+td.maltid .rotate { font-size: 5.5pt; line-height: 1; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 400; }
+td.maltid.middag { background: var(--dinner-zebra); color: var(--ink); }
+
+.rotate { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; display: inline-block; font-size: 9.5pt; }
+
+/* Radens färg sträcks ut över maträtt, kommentar, kastad mängd och signatur
+   (dag- och måltidscellen har egna färger) */
+tr.rand td:not(.dag):not(.maltid) { background: var(--zebra); }
+tr.middag-row td:not(.dag):not(.maltid) { background: var(--dinner); }
+tr.middag-row.rand td:not(.dag):not(.maltid) { background: var(--dinner-zebra); }
+
+td.kg { text-align: right; color: var(--ink-muted); font-size: 8pt; }
+
+/* Tjock linje ovanför varje ny dag */
+tr.ny-dag > td { border-top: 0.6mm solid var(--rule-strong); }
+
+/* Receptkoder nedtonade */
+.kod { color: var(--ink-muted); font-size: 0.85em; letter-spacing: 0.01em; }
+
+.sida { break-after: page; page-break-after: always; }
+.sida:last-child { break-after: auto; page-break-after: auto; }
+
+/* Förhandsvisning på skärm (påverkar inte utskriften) */
+@media screen {
+    body { background: #d4d7dc; padding: 8mm 0; }
+    .sida { width: 184mm; background: #fff; margin: 0 auto 8mm; padding: 8mm 13mm; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+}
+</style>
+<script>
+/* Tonar ner receptkoder: 1–8 versaler följt av 1–6 siffror läggs i <span class="kod">. */
+window.addEventListener('load', function () {
+    var re = /\b([A-ZÅÄÖ]{1,8}\d{1,6})\b/g;
+    document.querySelectorAll('td.ratt').forEach(function (td) {
+        if (td.querySelector('.kod')) return;
+        td.innerHTML = td.innerHTML.replace(re, '<span class="kod">$1</span>');
+    });
+    if (document.body.hasAttribute('data-autoprint')) window.print();
+});
+</script>
+</head><body>
+<!-- /mall:huvud -->
+<!-- mall:sida -->
+<div class="sida">
+<header class="sheet-head">
+  <h1><span>Dukningssvinn</span> <span class="week">Vecka {vecka}</span> <span class="week cycle">Matsedelsvecka {matsedelsvecka}</span> <span class="dates">{datum}</span></h1>
+</header>
+<table>
+<colgroup><col style="width:10mm"><col style="width:7mm"><col><col style="width:54mm"><col style="width:18mm"><col style="width:20mm"></colgroup>
+<tr><th class="tom"></th><th class="tom"></th><th class="ratt">Maträtt</th><th>Kommentar<span class="info">Ex saknas, skickat kantiner till källan, fryst in, med mera.</span></th><th>Kastad mängd</th><th>Signatur</th></tr>
+<!-- mall:rad -->
+<tr class="{radklass}"><!-- mall:dagcell --><td class="dag {dagklass}" rowspan="{dagrader}"><span class="rotate">{dag} <small>{dagdatum}</small></span></td><!-- /mall:dagcell --><!-- mall:maltidcell --><td class="maltid {maltidklass}" rowspan="{maltidrader}"><span class="rotate">{maltid}</span></td><!-- /mall:maltidcell --><td class="ratt">{ratt}</td><td class="kommentar"></td><td class="kg">kg</td><td class="sign"></td></tr>
+<!-- /mall:rad -->
+<!-- exempel -->
+<tr class="rand ny-dag"><td class="dag alt" rowspan="6"><span class="rotate">Tis <small>29/9</small></span></td><td class="maltid lunch" rowspan="4"><span class="rotate">Lunch</span></td><td class="ratt">Stekt kycklinginnerfilé</td><td class="kommentar"></td><td class="kg">kg</td><td class="sign"></td></tr>
+<tr class=""><td class="ratt">Currysås AKL0065</td><td class="kommentar"></td><td class="kg">kg</td><td class="sign"></td></tr>
+<tr class="rand"><td class="ratt">Ris</td><td class="kommentar"></td><td class="kg">kg</td><td class="sign"></td></tr>
+<tr class=""><td class="ratt">Broccoli</td><td class="kommentar"></td><td class="kg">kg</td><td class="sign"></td></tr>
+<tr class="rand middag-row"><td class="maltid middag" rowspan="2"><span class="rotate">Middag</span></td><td class="ratt">Fisksufflé AK0201</td><td class="kommentar"></td><td class="kg">kg</td><td class="sign"></td></tr>
+<tr class="middag-row"><td class="ratt">Smör AK0337</td><td class="kommentar"></td><td class="kg">kg</td><td class="sign"></td></tr>
+<tr class="rand ny-dag"><td class="dag" rowspan="6"><span class="rotate">Ons <small>30/9</small></span></td><td class="maltid lunch" rowspan="2"><span class="rotate">Lunch</span></td><td class="ratt">Biff Stroganoff AKL0007</td><td class="kommentar"></td><td class="kg">kg</td><td class="sign"></td></tr>
+<tr class=""><td class="ratt">Sommarblandning</td><td class="kommentar"></td><td class="kg">kg</td><td class="sign"></td></tr>
+<tr class="rand middag-row"><td class="maltid middag" rowspan="4"><span class="rotate">Middag</span></td><td class="ratt">Lasagne med linser &amp; keso AK112</td><td class="kommentar"></td><td class="kg">kg</td><td class="sign"></td></tr>
+<tr class="middag-row"><td class="ratt">Morot skivad</td><td class="kommentar"></td><td class="kg">kg</td><td class="sign"></td></tr>
+<tr class="rand middag-row"><td class="ratt"></td><td class="kommentar"></td><td class="kg">kg</td><td class="sign"></td></tr>
+<tr class="middag-row"><td class="ratt"></td><td class="kommentar"></td><td class="kg">kg</td><td class="sign"></td></tr>
+<!-- /exempel -->
+</table>
+</div>
+<!-- /mall:sida -->
+<!-- mall:fot -->
+</body></html>
+<!-- /mall:fot -->

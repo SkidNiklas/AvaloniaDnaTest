@@ -11,6 +11,7 @@
     <RunExcelDnaSetDebuggerOptions>false</RunExcelDnaSetDebuggerOptions>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Icons/*.png" />
     <PackageReference Include="ExcelDna.AddIn" Version="1.9.0" />
     <ProjectReference Include="../AvaloniaDnaTest.UI/AvaloniaDnaTest.UI.csproj" />
   </ItemGroup>
