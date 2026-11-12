@@ -1,5 +1,11 @@
 # AvaloniaDnaTest
 
+**Senaste tillägg: NativeWebView och HTML-förhandsgranskning (2026-11-10).** Gren `feature/native-webview`. Avalonia.Controls.WebView **12.1.1**, oförändrad Avalonia **12.1.5**, fem byte-identiska inbäddade HTML-mallar, sidomeny och utskrift via WebView2. Alla fem mallar passerar automatiska tester i riktig WebView2; packad XLL har laddats i Excel och inventeringsmallen samt utskriftsdialogen har verifierats visuellt. Egen direkt PDF-export ingår inte: API-provet gav Letter trots A4-CSS. [Integration, resultat och klientprotokoll](docs/native-webview.md). Äldre avsnitt nedan beskriver tidigare testomgångar.
+
+Öppna `dist/AvaloniaDnaTest-x64.xll`, välj **Avalonia Test → Öppna testfönster → HTML-förhandsgranskning**. Välj mall, **Uppdatera** eller **Skriv ut**. Utskrift startar bara efter ett aktivt val. Klienten behöver Excel x64, .NET 8 Desktop Runtime x64 och Microsoft Edge WebView2 Runtime; distribuera enbart XLL-filen. Den aktuella XLL-filen är **9 430 528 byte (8,99 MiB)**.
+
+Utvecklartest: `./scripts/Build.ps1 -WebSmoke` kör även HTML-testerna (behöver installerad WebView2). `python scripts/verify-webview.py` verifierar mallar, WebView-assembly, Ribbon-ikoner och native-payloads i den färdiga XLL-filen. HTML-testernas DOM-resultat sparas under `artifacts/webview/`. Fysisk A4-utskrift, full visuell regression och en ren jobbdator återstår enligt protokollet.
+
 **Aktuell uppföljning:** den fördröjda Open-uppdateringen är undersökt och aktiveringsordningen förbättrad. Grön Open har verifierats visuellt medan Avalonia har fokus. Se [rapporten](artifacts/ribbon-thread-investigation.md) och sista README-avsnittet för aktuella resultat och begränsningar.
 
 **Senaste version: dynamisk Ribbon-feedback.** Ready/Loading/Open, inbäddade ikoner och uppstartsmätning är implementerade. Release-bygge och paketering har 0 fel/varningar. Se avsnittet **Dynamisk Ribbon-feedback – 2026-11-10** sist i dokumentet för aktuella testresultat, begränsningar och klientprotokoll; äldre testresultat nedan är historik.

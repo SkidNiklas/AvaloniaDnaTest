@@ -1,10 +1,34 @@
 <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="AvaloniaDnaTest.UI.MainWindow"
-        Title="Avalonia Test · Excel-DNA" Background="{DynamicResource WindowSurface}" Width="980" Height="840" MinWidth="740" MinHeight="600">
+        Title="Avalonia Test · Excel-DNA" WindowStartupLocation="CenterScreen" Background="{DynamicResource WindowSurface}" Width="1280" Height="900" MinWidth="900" MinHeight="600">
   <DockPanel Margin="24">
     <Border DockPanel.Dock="Bottom" CornerRadius="8" Padding="12" Margin="0,16,0,0" Background="#203B66">
       <TextBlock Text="{Binding Status}" Foreground="White" TextWrapping="Wrap"/>
     </Border>
-    <ScrollViewer>
+    <Grid RowDefinitions="Auto,*" RowSpacing="18">
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+        <Button Content="☰" Click="ToggleMenu" ToolTip.Tip="Visa eller dölj sidomenyn"/>
+        <StackPanel Grid.Column="1"><TextBlock Classes="heading" Text="Avalonia i Excel"/><TextBlock Text="Ett fönster för kontroller, dokument och utskrift" Opacity="0.65"/></StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"><TextBlock Text="Mörkt tema" VerticalAlignment="Center"/><ToggleSwitch IsChecked="{Binding DarkTheme}" OnContent="" OffContent=""/></StackPanel>
+      </Grid>
+      <SplitView x:Name="NavigationShell" Grid.Row="1" DisplayMode="Inline" IsPaneOpen="True" OpenPaneLength="220">
+        <SplitView.Pane>
+          <Border Background="{DynamicResource NavigationSurface}" CornerRadius="12" Padding="10" Margin="0,0,16,0">
+            <StackPanel Spacing="8">
+              <TextBlock Text="ARBETSYTA" Foreground="{DynamicResource NavigationMutedForeground}" FontSize="11" Margin="12,12"/>
+              <Button Content="Översikt" Classes="navigation" Tag="OverviewPage" Click="NavigatePage" HorizontalAlignment="Stretch"/>
+              <Button Content="UI-kontroller" Classes="navigation" Tag="ControlsPage" Click="NavigatePage" HorizontalAlignment="Stretch"/>
+              <Button Content="HTML-förhandsgranskning" Classes="navigation" Tag="HtmlPage" Click="NavigatePage" HorizontalAlignment="Stretch" Padding="10"/>
+              <Button Content="Inställningar" Classes="navigation" Tag="SettingsPage" Click="NavigatePage" HorizontalAlignment="Stretch"/>
+            </StackPanel>
+          </Border>
+        </SplitView.Pane>
+        <Grid>
+          <Border x:Name="OverviewPage" Padding="28" CornerRadius="12" BorderBrush="#5477A5" BorderThickness="1">
+            <StackPanel Spacing="18"><TextBlock Text="Dokument direkt i Excel" Classes="heading"/><TextBlock Text="Förhandsgranska fem inbäddade HTML-mallar med Microsoft Edge WebView2. Välj HTML-förhandsgranskning i menyn för att börja." TextWrapping="Wrap" FontSize="17"/><TextBlock Text="Mallarnas egna exempeldata, skärmformat och utskriftsstilar används direkt. Platshållare kan därför fortfarande synas." TextWrapping="Wrap"/><Button Content="Öppna HTML-förhandsgranskning" Tag="HtmlPage" Click="NavigatePage" HorizontalAlignment="Left"/><TextBlock Text="UI-kontroller samlar de befintliga bindnings-, tema- och Excel-testerna." TextWrapping="Wrap"/></StackPanel>
+          </Border>
+          <ContentControl x:Name="HtmlPage" IsVisible="False" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+          <Border x:Name="SettingsPage" IsVisible="False" Padding="28" CornerRadius="12" BorderBrush="#5477A5" BorderThickness="1"><StackPanel Spacing="16"><TextBlock Text="Inställningar" Classes="heading"/><TextBlock Text="Mörkt tema"/><ToggleSwitch IsChecked="{Binding DarkTheme}"/><TextBlock Text="WebView2-data sparas i %LOCALAPPDATA%\AvaloniaDnaTest\WebView2. Ingen klientdata lagras i XLL-katalogen. Befintliga .NET 8 Desktop Runtime x64 och WebView2 Runtime krävs." TextWrapping="Wrap"/><TextBlock Text="Diagnostik: %TEMP%\AvaloniaDnaTest\diagnostics.log" TextWrapping="Wrap"/></StackPanel></Border>
+          <ScrollViewer x:Name="ControlsPage" IsVisible="False" AllowAutoHide="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
       <StackPanel Spacing="18">
         <Grid ColumnDefinitions="*,Auto">
           <StackPanel><TextBlock Classes="heading" Text="Avalonia i Excel"/><TextBlock Text=".NET 8 · Avalonia 12.1.5 · Excel-DNA 1.9" Opacity="0.65"/></StackPanel>
@@ -34,6 +58,9 @@
         </DataGrid>
         <Button Content="Om detta test" Command="{Binding AboutCommand}" HorizontalAlignment="Left"/>
       </StackPanel>
-    </ScrollViewer>
+          </ScrollViewer>
+        </Grid>
+      </SplitView>
+    </Grid>
   </DockPanel>
 </Window>

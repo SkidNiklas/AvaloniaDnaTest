@@ -13,6 +13,12 @@ internal static class Program
         using var ui = new EmbeddedUi(new SampleExcel());
         try
         {
+            if (args.Contains("--visual-smoke")) { await VisualSmoke.RunAsync(ui); return 0; }
+            if (args.Contains("--web-smoke"))
+            {
+                await WebSmoke.RunAsync(ui);
+                return 0;
+            }
             if (args.Contains("--smoke"))
             {
                 // Same bootstrap and dispatcher as Excel, not a desktop-lifetime substitute.
@@ -36,6 +42,7 @@ internal static class Program
                     await Task.Delay(800);
                     await ui.InspectWindowAsync(window =>
                     {
+                        window.ShowPage("ControlsPage");
                         var vm = (TestViewModel)window.DataContext!;
                         var input = window.FindControl<TextBox>("InputBox")!;
                         input.Text = "Bindningstest";

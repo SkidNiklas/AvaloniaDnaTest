@@ -2,8 +2,22 @@
   <Application.Resources>
     <ResourceDictionary>
       <ResourceDictionary.ThemeDictionaries>
-        <ResourceDictionary x:Key="Dark"><SolidColorBrush x:Key="WindowSurface" Color="#111827"/></ResourceDictionary>
-        <ResourceDictionary x:Key="Light"><SolidColorBrush x:Key="WindowSurface" Color="#F1F5F9"/></ResourceDictionary>
+        <ResourceDictionary x:Key="Dark"><SolidColorBrush x:Key="WindowSurface" Color="#111827"/>
+          <SolidColorBrush x:Key="NavigationSurface" Color="#20242B"/>
+          <SolidColorBrush x:Key="NavigationForeground" Color="#F3F4F6"/>
+          <SolidColorBrush x:Key="NavigationMutedForeground" Color="#B7C1CF"/>
+          <SolidColorBrush x:Key="NavigationPointerOver" Color="#303740"/>
+          <SolidColorBrush x:Key="NavigationPressed" Color="#3A424D"/>
+          <SolidColorBrush x:Key="NavigationSelected" Color="#344A65"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light"><SolidColorBrush x:Key="WindowSurface" Color="#F1F5F9"/>
+          <SolidColorBrush x:Key="NavigationSurface" Color="#E7ECF2"/>
+          <SolidColorBrush x:Key="NavigationForeground" Color="#17202D"/>
+          <SolidColorBrush x:Key="NavigationMutedForeground" Color="#46566A"/>
+          <SolidColorBrush x:Key="NavigationPointerOver" Color="#D9E1EA"/>
+          <SolidColorBrush x:Key="NavigationPressed" Color="#CCD6E2"/>
+          <SolidColorBrush x:Key="NavigationSelected" Color="#D0E1F5"/>
+        </ResourceDictionary>
       </ResourceDictionary.ThemeDictionaries>
     </ResourceDictionary>
   </Application.Resources>
@@ -16,6 +30,24 @@
     </FluentTheme>
     <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
     <Style Selector="Button"><Setter Property="CornerRadius" Value="8"/><Setter Property="Padding" Value="16,10"/></Style>
+    <!-- Semantic navigation brushes can later be overridden by a module scope. -->
+    <Style Selector="Button.navigation">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource NavigationForeground}"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="Button.navigation.selected /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource NavigationSelected}"/>
+      <Setter Property="Foreground" Value="{DynamicResource NavigationForeground}"/>
+    </Style>
+    <Style Selector="Button.navigation:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource NavigationPointerOver}"/>
+      <Setter Property="Foreground" Value="{DynamicResource NavigationForeground}"/>
+    </Style>
+    <Style Selector="Button.navigation:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource NavigationPressed}"/>
+      <Setter Property="Foreground" Value="{DynamicResource NavigationForeground}"/>
+    </Style>
     <Style Selector="TextBlock.heading"><Setter Property="FontSize" Value="26"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
   </Application.Styles>
 </Application>

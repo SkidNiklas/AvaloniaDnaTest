@@ -1,7 +1,8 @@
 param(
     [ValidateSet('Debug','Release')][string]$Configuration = 'Release',
     [string]$NuGetConfig,
-    [switch]$SkipSmoke
+    [switch]$SkipSmoke,
+    [switch]$WebSmoke
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath "$PSScriptRoot/..").Path
@@ -21,6 +22,10 @@ try {
     if (-not $SkipSmoke) {
         & dotnet "src/AvaloniaDnaTest.Host/bin/$Configuration/net8.0-windows/AvaloniaDnaTest.Host.dll" --smoke artifacts/test-window.png 2>&1 | Tee-Object artifacts/step1-smoke.log
         if ($LASTEXITCODE) { throw 'Step 1 runtime smoke failed.' }
+    }
+    if ($WebSmoke) {
+        & dotnet "src/AvaloniaDnaTest.Host/bin/$Configuration/net8.0-windows/AvaloniaDnaTest.Host.dll" --web-smoke 2>&1 | Tee-Object artifacts/webview-smoke.log
+        if ($LASTEXITCODE) { throw 'NativeWebView runtime smoke failed.' }
     }
     # Step 2: compile the integration independently of packing.
     & dotnet build src/AvaloniaDnaTest.AddIn -c $Configuration --no-restore -m:1 -p:UseSharedCompilation=false -p:RunExcelDnaPack=false 2>&1 | Tee-Object artifacts/step2-build.log
